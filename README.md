@@ -58,12 +58,6 @@ Cabinet API работает на порту `:8080`.
 
 Кастом относительно upstream Bedolaga / Remnawave-стека. Сайт: [vpnbro.pro](https://vpnbro.pro).
 
-### Брендинг и репозитории
-- Имя сервиса **VPN BRO**, репозитории `dabroivanov-ship-it/bot` и `cabinet`
-- Проверка обновлений и релизов кабинета с GitHub этих репо
-- Публичный README без персональных доменов; примеры на `example.com`
-- Чёрный список по-прежнему с upstream (`BLACKLIST_GITHUB_URL` → BEDOLAGA-DEV)
-
 ### Кабинет API и контент
 - CMS гайдов / базы знаний, SEO HTML из БД
 - Рекомендуемые клиенты на главной (Incy / Happ)

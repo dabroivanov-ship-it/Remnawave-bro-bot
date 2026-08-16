@@ -9,7 +9,3 @@
 - Кампании: `/login?campaign=`, бонусы без нулевого баланса
 - Домен vpnbro.pro (URL, CORS, return URL)
 - Роутеры, автоплатежи / карты, финансы, партнёрка, маркетинг-сайт
-
-## Fixes / chore
-- Брендинг VPN BRO, репо `dabroivanov-ship-it/bot` + `cabinet`
-- Без community-хвостов Bedolaga; blacklist URL с upstream (`BLACKLIST_GITHUB_URL`)
