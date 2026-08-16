@@ -20,3 +20,10 @@ def test_all_orm_tables_are_in_backup_models_or_associations():
     missing = sorted(mapped - covered)
 
     assert not missing, f'Tables missing from backup coverage: {missing}'
+
+
+def test_guide_tables_seeded_on_install_are_in_backup():
+    """Hub/categories/pages are created by migration 0075 and must round-trip in backups."""
+    service = BackupService(bot=None)
+    covered = {model.__tablename__ for model in service._base_backup_models}
+    assert {'guide_hub_settings', 'guide_categories', 'guide_pages'} <= covered

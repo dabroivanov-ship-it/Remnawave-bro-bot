@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.crud.system_setting import get_setting_value
 from app.database.models import SystemSetting, User
-
 from ..dependencies import get_cabinet_db, get_current_cabinet_user, require_permission
+from ..schemas.news import _sanitize_html_content
 
 
 logger = structlog.get_logger(__name__)
@@ -45,6 +45,10 @@ ROUTERS_ENABLED_KEY = 'CABINET_ROUTERS_ENABLED'  # Stores "true" or "false"
 GUIDES_ENABLED_KEY = 'CABINET_GUIDES_ENABLED'  # Marketing /guides link
 SERVER_STATUS_ENABLED_KEY = 'CABINET_SERVER_STATUS_ENABLED'  # Marketing /server-status
 HOME_FAQ_KEY = 'CABINET_HOME_FAQ'  # JSON: {title, subtitle, items:[{question,answer}]}
+HOME_HERO_KEY = 'CABINET_HOME_HERO'  # JSON: {badge}
+HOME_WHY_KEY = 'CABINET_HOME_WHY'  # JSON: {title, cards, stats}
+LEGAL_PRIVACY_KEY = 'CABINET_LEGAL_PRIVACY'  # JSON: privacy page fields
+LEGAL_OFFER_KEY = 'CABINET_LEGAL_OFFER'  # JSON: offer page fields
 HOME_RECOMMENDED_APPS_KEY = 'CABINET_HOME_RECOMMENDED_APPS'  # JSON: {enabled, apps:["incy","happ"]}
 ANIMATION_CONFIG_KEY = 'CABINET_ANIMATION_CONFIG'  # Stores JSON with animation config
 TELEGRAM_WIDGET_SIZE_KEY = 'TELEGRAM_WIDGET_SIZE'
@@ -331,6 +335,196 @@ class HomeFaqUpdate(BaseModel):
     title: str | None = None
     subtitle: str | None = None
     items: list[HomeFaqItem] | None = None
+
+
+DEFAULT_HOME_HERO_BADGE = '24VPNBRO.RU · Конфиденциальность'
+
+
+class HomeHeroResponse(BaseModel):
+    """Hero kicker/badge on the marketing home page."""
+
+    badge: str = DEFAULT_HOME_HERO_BADGE
+
+
+class HomeHeroUpdate(BaseModel):
+    badge: str | None = None
+
+
+class HomeWhyCard(BaseModel):
+    title: str
+    text: str
+
+
+class HomeWhyStat(BaseModel):
+    value: str
+    label: str
+
+
+DEFAULT_HOME_WHY: dict = {
+    'title': 'Почему VPN BRO?',
+    'cards': [
+        {'title': 'Smart Tunneling', 'text': 'Автоматический обход DPI и фильтров провайдера.'},
+        {'title': 'Глобальная сеть', 'text': 'Переключайтесь между локациями мгновенно.'},
+        {'title': 'Максимальная скорость', 'text': '10-гигабитные порты на всех основных узлах.'},
+    ],
+    'stats': [
+        {'value': '< 10 мс', 'label': 'Пинг до серверов'},
+        {'value': '10 Гбит/с', 'label': 'Скорость портов'},
+        {'value': '24/7', 'label': 'Техподдержка'},
+        {'value': '90 дней', 'label': 'Гарантия возврата'},
+    ],
+}
+
+
+class HomeWhyResponse(BaseModel):
+    title: str = DEFAULT_HOME_WHY['title']
+    cards: list[HomeWhyCard] = Field(default_factory=lambda: [HomeWhyCard(**c) for c in DEFAULT_HOME_WHY['cards']])
+    stats: list[HomeWhyStat] = Field(default_factory=lambda: [HomeWhyStat(**s) for s in DEFAULT_HOME_WHY['stats']])
+
+
+class HomeWhyUpdate(BaseModel):
+    title: str | None = None
+    cards: list[HomeWhyCard] | None = None
+    stats: list[HomeWhyStat] | None = None
+
+
+LEGAL_FIELD_LIMITS = {
+    'kicker': 40,
+    'title': 80,
+    'title_highlight': 80,
+    'lead': 600,
+    'updated': 80,
+    'html': 80_000,
+    'meta_title': 160,
+    'meta_description': 320,
+}
+
+DEFAULT_LEGAL_PRIVACY: dict = {
+    'kicker': 'Документ',
+    'title': 'Политика',
+    'title_highlight': 'конфиденциальности',
+    'lead': (
+        'Ниже описано, какие данные обрабатывает VPN BRO, зачем это нужно и какие права есть '
+        'у пользователя. Мы стараемся хранить минимум данных, необходимых для работы сервиса.'
+    ),
+    'updated': 'Последнее обновление: апрель 2026',
+    'meta_title': 'Политика конфиденциальности — VPN BRO',
+    'meta_description': (
+        'Политика конфиденциальности VPN BRO: какие данные обрабатываются и как защищается '
+        'информация пользователей.'
+    ),
+    'html': (
+        '<h2>1. Общие положения</h2>'
+        '<p>Настоящая Политика обработки данных описывает, как VPN BRO собирает, использует и защищает информацию пользователей сайта и сервиса.</p>'
+        '<h2>2. Данные, которые мы обрабатываем</h2>'
+        '<ul>'
+        '<li><b>Идентификатор аккаунта</b>: в зависимости от способа использования сервиса это может быть, например, ваш Telegram ID (для выдачи подписки/уведомлений) или иной идентификатор в личном кабинете.</li>'
+        '<li><b>Платежные данные</b>: мы <b>не храним</b> данные банковских карт. Платежи обрабатываются платежным провайдером; мы получаем только статус оплаты/идентификатор заказа, необходимый для активации подписки.</li>'
+        '<li><b>Данные сайта</b>: техническая информация о посещении сайта (например, IP‑адрес, тип устройства/браузера, страницы и события) — в том числе через Яндекс.Метрику.</li>'
+        '</ul>'
+        '<h2>3. Логи активности</h2>'
+        '<p>Мы не храним историю посещенных сайтов и содержимое трафика. Наша цель — предоставить защищённый доступ без сбора лишней информации. При этом сайт может собирать обезличенную статистику для улучшения интерфейса (см. пункт про аналитику).</p>'
+        '<h2>4. Зачем мы используем эти данные</h2>'
+        '<ul>'
+        '<li>идентификация аккаунта и предоставление доступа к подписке;</li>'
+        '<li>уведомления о статусе подписки и поддержка пользователей;</li>'
+        '<li>антифрод и защита сервиса от злоупотреблений;</li>'
+        '<li>улучшение сайта и качества сервиса (аналитика).</li>'
+        '</ul>'
+        '<h2>5. Cookies и аналитика</h2>'
+        '<p>Сайт использует cookies и аналитические инструменты (например, Яндекс.Метрика). Это помогает понять, какие разделы удобны, а какие требуют улучшения. Вы можете ограничить cookies в настройках браузера.</p>'
+        '<h2>6. Передача данных третьим лицам</h2>'
+        '<p>Мы не продаём персональные данные. Передача возможна только: (а) с вашего согласия; (б) при необходимости для исполнения услуги (например, платежный провайдер); (в) по законному требованию.</p>'
+        '<h2>7. Хранение и безопасность</h2>'
+        '<p>Информация хранится только в течение времени, необходимого для предоставления сервиса, либо в соответствии с требованиями законодательства. Мы применяем технические и организационные меры защиты от несанкционированного доступа.</p>'
+        '<h2>8. Ваши права</h2>'
+        '<ul>'
+        '<li>запросить информацию о данных, которые мы обрабатываем;</li>'
+        '<li>попросить исправить неточные данные;</li>'
+        '<li>попросить удалить данные, если нет законных оснований для хранения;</li>'
+        '<li>отозвать согласие на обработку (если обработка основана на согласии).</li>'
+        '</ul>'
+        '<h2>9. Изменения политики</h2>'
+        '<p>Мы можем обновлять Политику. Актуальная версия всегда доступна на этой странице.</p>'
+        '<h2>10. Контакты</h2>'
+        '<p>По вопросам приватности и обработки данных свяжитесь с нами через поддержку или по контактам в футере сайта.</p>'
+    ),
+}
+
+DEFAULT_LEGAL_OFFER: dict = {
+    'kicker': 'Документ',
+    'title': 'Публичная',
+    'title_highlight': 'оферта',
+    'lead': 'Публичная оферта о предоставлении услуг 24VPN BRO.',
+    'updated': 'Дата публикации: 17 февраля 2026 г.',
+    'meta_title': 'Публичная оферта — VPN BRO',
+    'meta_description': (
+        'Публичная оферта VPN BRO на услуги VPN и продажу готовых роутеров с предустановленным ПО.'
+    ),
+    'html': (
+        '<h2>1. Предмет договора</h2>'
+        '<p><b>1.1.</b> Сервис 24VPN BRO (далее — «Исполнитель») предоставляет пользователю (далее — «Заказчик») услуги по обеспечению технического доступа к защищенным узлам передачи данных (VPN‑серверам) на условиях подписки.</p>'
+        '<p><b>1.2.</b> Использование Telegram-бота или личного кабинета <a href="/login">vpnbro.pro</a> является полным и безоговорочным акцептом данной оферты.</p>'
+        '<h2>2. Порядок оказания услуг</h2>'
+        '<p><b>2.1.</b> Услуга предоставляется «как есть» (as is). Исполнитель не гарантирует 100% бесперебойность работы, но обязуется принимать все меры для поддержания стабильности сервиса.</p>'
+        '<p><b>2.2.</b> Доступ к услугам предоставляется сразу после подтверждения оплаты в автоматическом режиме.</p>'
+        '<h2>3. Правила использования (AUP)</h2>'
+        '<p><b>3.1.</b> Заказчику запрещено использовать сервис для:</p>'
+        '<ul>'
+        '<li>рассылки спама (Email, мессенджеры);</li>'
+        '<li>распространения вредоносного ПО и проведения DDoS-атак;</li>'
+        '<li>распространения запрещенного законодательством контента (детская порнография, призывы к насилию и т.д.);</li>'
+        '<li>нарушения авторских прав (использование торрентов на серверах, где это прямо запрещено техническими правилами локации).</li>'
+        '</ul>'
+        '<p><b>3.2.</b> В случае выявления нарушений, Исполнитель имеет право заблокировать доступ к сервису без возврата средств.</p>'
+        '<h2>4. Стоимость и возврат средств</h2>'
+        '<p><b>4.1.</b> Стоимость услуг определяется тарифами, указанными в интерфейсе бота/кабинета.</p>'
+        '<p><b>4.2.</b> Ввиду предоставления доступа к цифровому контенту в реальном времени, возврат средств за активированные и использованные периоды подписки не производится.</p>'
+        '<p><b>4.3.</b> Возврат возможен только в случае полной неработоспособности сервиса по вине Исполнителя более 48 часов подряд.</p>'
+        '<h2>5. Ограничение ответственности</h2>'
+        '<p><b>5.1.</b> Исполнитель не несет ответственности за:</p>'
+        '<ul>'
+        '<li>действия Заказчика в сети Интернет;</li>'
+        '<li>блокировки ресурсов третьими лицами (государственными органами, провайдерами);</li>'
+        '<li>косвенные убытки или упущенную прибыль Заказчика.</li>'
+        '</ul>'
+        '<p><b>5.2.</b> Исполнитель не имеет доступа к данным, передаваемым внутри зашифрованного туннеля.</p>'
+        '<h2>6. Изменение условий</h2>'
+        '<p><b>6.1.</b> Исполнитель оставляет за собой право изменять текст данной оферты без предварительного уведомления. Новая редакция вступает в силу с момента публикации.</p>'
+    ),
+}
+
+LEGAL_PAGE_DEFAULTS = {
+    'privacy': DEFAULT_LEGAL_PRIVACY,
+    'offer': DEFAULT_LEGAL_OFFER,
+}
+
+LEGAL_PAGE_KEYS = {
+    'privacy': LEGAL_PRIVACY_KEY,
+    'offer': LEGAL_OFFER_KEY,
+}
+
+
+class LegalPageResponse(BaseModel):
+    kicker: str
+    title: str
+    title_highlight: str
+    lead: str
+    updated: str
+    html: str
+    meta_title: str
+    meta_description: str
+
+
+class LegalPageUpdate(BaseModel):
+    kicker: str | None = None
+    title: str | None = None
+    title_highlight: str | None = None
+    lead: str | None = None
+    updated: str | None = None
+    html: str | None = None
+    meta_title: str | None = None
+    meta_description: str | None = None
 
 
 class SiteFeaturesResponse(BaseModel):
@@ -1412,6 +1606,187 @@ async def update_home_faq(
         subtitle=body['subtitle'],
         items=[HomeFaqItem(**item) for item in body['items']],
     )
+
+
+def _parse_home_hero(raw: str | None) -> HomeHeroResponse:
+    badge = DEFAULT_HOME_HERO_BADGE
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and isinstance(parsed.get('badge'), str):
+                text = parsed['badge'].strip()
+                if text:
+                    badge = text[:120]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return HomeHeroResponse(badge=badge)
+
+
+@router.get('/home-hero', response_model=HomeHeroResponse)
+async def get_home_hero(
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Public home-page hero badge."""
+    raw = await get_setting_value(db, HOME_HERO_KEY)
+    return _parse_home_hero(raw)
+
+
+@router.put('/home-hero', response_model=HomeHeroResponse)
+async def update_home_hero(
+    payload: HomeHeroUpdate,
+    admin: User = Depends(require_permission('settings:edit')),
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Update home-page hero badge. Admin only."""
+    current = _parse_home_hero(await get_setting_value(db, HOME_HERO_KEY))
+    badge = (payload.badge if payload.badge is not None else current.badge).strip()
+    badge = (badge or DEFAULT_HOME_HERO_BADGE)[:120]
+    await set_setting_value(db, HOME_HERO_KEY, json.dumps({'badge': badge}, ensure_ascii=False))
+    logger.info('Admin updated home hero badge', telegram_id=admin.telegram_id)
+    return HomeHeroResponse(badge=badge)
+
+
+def _parse_home_why(raw: str | None) -> HomeWhyResponse:
+    data = {
+        'title': DEFAULT_HOME_WHY['title'],
+        'cards': [dict(c) for c in DEFAULT_HOME_WHY['cards']],
+        'stats': [dict(s) for s in DEFAULT_HOME_WHY['stats']],
+    }
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                if isinstance(parsed.get('title'), str) and parsed['title'].strip():
+                    data['title'] = parsed['title'].strip()[:120]
+                cards = parsed.get('cards')
+                if isinstance(cards, list):
+                    cleaned_cards = []
+                    for card in cards[:3]:
+                        if not isinstance(card, dict):
+                            continue
+                        title = str(card.get('title') or '').strip()[:80]
+                        text = str(card.get('text') or '').strip()[:300]
+                        if title and text:
+                            cleaned_cards.append({'title': title, 'text': text})
+                    if len(cleaned_cards) == 3:
+                        data['cards'] = cleaned_cards
+                stats = parsed.get('stats')
+                if isinstance(stats, list):
+                    cleaned_stats = []
+                    for stat in stats[:4]:
+                        if not isinstance(stat, dict):
+                            continue
+                        value = str(stat.get('value') or '').strip()[:32]
+                        label = str(stat.get('label') or '').strip()[:80]
+                        if value and label:
+                            cleaned_stats.append({'value': value, 'label': label})
+                    if len(cleaned_stats) == 4:
+                        data['stats'] = cleaned_stats
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return HomeWhyResponse(
+        title=data['title'],
+        cards=[HomeWhyCard(**c) for c in data['cards']],
+        stats=[HomeWhyStat(**s) for s in data['stats']],
+    )
+
+
+@router.get('/home-why', response_model=HomeWhyResponse)
+async def get_home_why(
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Public home-page «why us» block."""
+    raw = await get_setting_value(db, HOME_WHY_KEY)
+    return _parse_home_why(raw)
+
+
+@router.put('/home-why', response_model=HomeWhyResponse)
+async def update_home_why(
+    payload: HomeWhyUpdate,
+    admin: User = Depends(require_permission('settings:edit')),
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Update home-page «why us» block. Admin only."""
+    current = _parse_home_why(await get_setting_value(db, HOME_WHY_KEY))
+    title = (payload.title if payload.title is not None else current.title).strip() or current.title
+    cards = payload.cards if payload.cards is not None else current.cards
+    stats = payload.stats if payload.stats is not None else current.stats
+    cleaned_cards = [
+        {'title': c.title.strip()[:80], 'text': c.text.strip()[:300]}
+        for c in cards
+        if c.title.strip() and c.text.strip()
+    ][:3]
+    cleaned_stats = [
+        {'value': s.value.strip()[:32], 'label': s.label.strip()[:80]}
+        for s in stats
+        if s.value.strip() and s.label.strip()
+    ][:4]
+    body = {
+        'title': title[:120],
+        'cards': cleaned_cards if len(cleaned_cards) == 3 else [c.model_dump() for c in current.cards],
+        'stats': cleaned_stats if len(cleaned_stats) == 4 else [s.model_dump() for s in current.stats],
+    }
+    await set_setting_value(db, HOME_WHY_KEY, json.dumps(body, ensure_ascii=False))
+    logger.info('Admin updated home why block', telegram_id=admin.telegram_id)
+    return HomeWhyResponse(
+        title=body['title'],
+        cards=[HomeWhyCard(**c) for c in body['cards']],
+        stats=[HomeWhyStat(**s) for s in body['stats']],
+    )
+
+
+def _clip_legal_field(key: str, value: str) -> str:
+    limit = LEGAL_FIELD_LIMITS[key]
+    text = value.strip()
+    if key == 'html':
+        text = _sanitize_html_content(text)
+    return text[:limit]
+
+
+def _parse_legal_page(raw: str | None, default: dict) -> LegalPageResponse:
+    data = dict(default)
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                for key in LEGAL_FIELD_LIMITS:
+                    value = parsed.get(key)
+                    if isinstance(value, str) and value.strip():
+                        data[key] = _clip_legal_field(key, value)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return LegalPageResponse(**data)
+
+
+@router.get('/legal/{slug}', response_model=LegalPageResponse)
+async def get_legal_page(
+    slug: Literal['privacy', 'offer'],
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Public privacy or offer page for the marketing site."""
+    raw = await get_setting_value(db, LEGAL_PAGE_KEYS[slug])
+    return _parse_legal_page(raw, LEGAL_PAGE_DEFAULTS[slug])
+
+
+@router.put('/legal/{slug}', response_model=LegalPageResponse)
+async def update_legal_page(
+    slug: Literal['privacy', 'offer'],
+    payload: LegalPageUpdate,
+    admin: User = Depends(require_permission('settings:edit')),
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Update privacy or offer marketing page. Admin only."""
+    default = LEGAL_PAGE_DEFAULTS[slug]
+    current = _parse_legal_page(await get_setting_value(db, LEGAL_PAGE_KEYS[slug]), default)
+    body: dict[str, str] = {}
+    for key in LEGAL_FIELD_LIMITS:
+        incoming = getattr(payload, key)
+        value = incoming if incoming is not None else getattr(current, key)
+        clipped = _clip_legal_field(key, value or '')
+        body[key] = clipped or default[key]
+    await set_setting_value(db, LEGAL_PAGE_KEYS[slug], json.dumps(body, ensure_ascii=False))
+    logger.info('Admin updated legal page', telegram_id=admin.telegram_id, slug=slug)
+    return LegalPageResponse(**body)
 
 
 def _resolve_happ_links() -> dict[str, str]:
