@@ -162,3 +162,10 @@ docker compose down && docker compose up -d
 | `CABINET_ALLOWED_ORIGINS` | CORS (ваш домен кабинета) |
 
 Полный список — в `.env.example`.
+
+---
+
+## 💬 Сообщество
+
+- Вопросы и обсуждения — [@dima_dabro](https://t.me/dima_dabro)
+- Тестирование — [vpnbro.pro](https://vpnbro.pro)
