@@ -167,6 +167,5 @@ docker compose down && docker compose up -d
 
 ## 💬 Сообщество
 
-- Вопросы и обсуждения — [@dima_dabro](https://t.me/dima_dabro)
 - Группа — [@broremnawave](https://t.me/broremnawave)
 - Тестирование — [vpnbro.pro](https://vpnbro.pro)
