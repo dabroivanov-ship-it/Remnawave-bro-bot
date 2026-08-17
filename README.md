@@ -10,7 +10,7 @@ Cabinet API работает на порту `:8080`.
 
 | Репозиторий | Назначение |
 |-------------|------------|
-| **bro-bot** (этот) | Telegram-бот + Cabinet API |
+| **Remnawave-bro-bot** (этот) | Telegram-бот + Cabinet API |
 | [cabinet](https://github.com/dabroivanov-ship-it/cabinet) | Веб-кабинет |
 
 ---
@@ -95,8 +95,8 @@ Cabinet API работает на порту `:8080`.
 
 ```bash
 cd /root
-git clone https://github.com/dabroivanov-ship-it/bro-bot.git bro-bot
-cd bro-bot
+git clone https://github.com/dabroivanov-ship-it/Remnawave-bro-bot.git remnawave-bro-bot
+cd remnawave-bro-bot
 
 cp .env.example .env
 ```
@@ -125,7 +125,7 @@ docker compose logs bot --since 2m | tail -30
 ## Обновление
 
 ```bash
-cd /root/bro-bot
+cd /root/remnawave-bro-bot
 git pull origin main
 docker compose up -d --build bot
 ```

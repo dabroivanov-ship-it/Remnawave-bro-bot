@@ -57,8 +57,8 @@ LABEL org.opencontainers.image.title="VPN BRO Bot" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/dabroivanov-ship-it/bro-bot" \
-      org.opencontainers.image.url="https://github.com/dabroivanov-ship-it/bro-bot" \
+      org.opencontainers.image.source="https://github.com/dabroivanov-ship-it/Remnawave-bro-bot" \
+      org.opencontainers.image.url="https://github.com/dabroivanov-ship-it/Remnawave-bro-bot" \
       org.opencontainers.image.vendor="dabroivanov-ship-it"
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
