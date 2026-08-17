@@ -1,5 +1,5 @@
 [project]
-name = 'remnawave-bro-bot'
+name = 'vpnbro-bot'
 version = "3.53.0"
 description = 'Telegram bot for RemnaWave VPN service'
 readme = 'README.md'

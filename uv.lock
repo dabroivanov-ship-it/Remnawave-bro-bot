@@ -1141,73 +1141,6 @@ wheels = [
 ]
 
 [[package]]
-name = "remnawave-bedolaga-telegram-bot"
-version = "3.49.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "aiogram" },
-    { name = "aiohttp-socks" },
-    { name = "aiosqlite" },
-    { name = "alembic" },
-    { name = "asyncpg" },
-    { name = "bcrypt" },
-    { name = "cryptography" },
-    { name = "fastapi", extra = ["standard"] },
-    { name = "httpx", extra = ["socks"] },
-    { name = "packaging" },
-    { name = "pyjwt" },
-    { name = "python-dateutil" },
-    { name = "pyyaml" },
-    { name = "pyzipper" },
-    { name = "qrcode", extra = ["pil"] },
-    { name = "redis" },
-    { name = "rich" },
-    { name = "sqlalchemy" },
-    { name = "structlog" },
-    { name = "yookassa" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiogram", specifier = ">=3.25.0" },
-    { name = "aiohttp-socks", specifier = ">=0.10.1" },
-    { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "alembic", specifier = ">=1.18.4" },
-    { name = "asyncpg", specifier = ">=0.31.0" },
-    { name = "bcrypt", specifier = ">=5.0.0" },
-    { name = "cryptography", specifier = ">=44.0.1" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.129.0" },
-    { name = "httpx", extras = ["socks"], specifier = ">=0.27.0" },
-    { name = "packaging", specifier = ">=26.0" },
-    { name = "pyjwt", specifier = ">=2.11.0" },
-    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "pyzipper", specifier = ">=0.3.6" },
-    { name = "qrcode", extras = ["pil"], specifier = ">=8.0" },
-    { name = "redis", specifier = ">=7.1.1" },
-    { name = "rich", specifier = ">=14.0" },
-    { name = "sqlalchemy", specifier = ">=2.0.46" },
-    { name = "structlog", specifier = ">=25.1.0,<26" },
-    { name = "yookassa", specifier = ">=3.10.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[[package]]
 name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1464,6 +1397,73 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/15/c0/0be24758891ef825f2065cd5db8741aaddabe3e248ee6acc5e8a80f04005/uvloop-0.22.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0530a5fbad9c9e4ee3f2b33b148c6a64d47bbad8000ea63704fa8260f4cf728e", size = 4366890, upload-time = "2025-10-16T22:16:40.547Z" },
     { url = "https://files.pythonhosted.org/packages/d2/53/8369e5219a5855869bcee5f4d317f6da0e2c669aecf0ef7d371e3d084449/uvloop-0.22.1-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:bc5ef13bbc10b5335792360623cc378d52d7e62c2de64660616478c32cd0598e", size = 4119472, upload-time = "2025-10-16T22:16:41.694Z" },
     { url = "https://files.pythonhosted.org/packages/f8/ba/d69adbe699b768f6b29a5eec7b47dd610bd17a69de51b251126a801369ea/uvloop-0.22.1-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:1f38ec5e3f18c8a10ded09742f7fb8de0108796eb673f30ce7762ce1b8550cad", size = 4239051, upload-time = "2025-10-16T22:16:43.224Z" },
+]
+
+[[package]]
+name = "vpnbro-bot"
+version = "3.53.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "aiogram" },
+    { name = "aiohttp-socks" },
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "bcrypt" },
+    { name = "cryptography" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "httpx", extra = ["socks"] },
+    { name = "packaging" },
+    { name = "pyjwt" },
+    { name = "python-dateutil" },
+    { name = "pyyaml" },
+    { name = "pyzipper" },
+    { name = "qrcode", extra = ["pil"] },
+    { name = "redis" },
+    { name = "rich" },
+    { name = "sqlalchemy" },
+    { name = "structlog" },
+    { name = "yookassa" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiogram", specifier = ">=3.25.0" },
+    { name = "aiohttp-socks", specifier = ">=0.10.1" },
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "alembic", specifier = ">=1.18.4" },
+    { name = "asyncpg", specifier = ">=0.31.0" },
+    { name = "bcrypt", specifier = ">=5.0.0" },
+    { name = "cryptography", specifier = ">=44.0.1" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.129.0" },
+    { name = "httpx", extras = ["socks"], specifier = ">=0.27.0" },
+    { name = "packaging", specifier = ">=26.0" },
+    { name = "pyjwt", specifier = ">=2.11.0" },
+    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "pyzipper", specifier = ">=0.3.6" },
+    { name = "qrcode", extras = ["pil"], specifier = ">=8.0" },
+    { name = "redis", specifier = ">=7.1.1" },
+    { name = "rich", specifier = ">=14.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.46" },
+    { name = "structlog", specifier = ">=25.1.0,<26" },
+    { name = "yookassa", specifier = ">=3.10.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
 ]
 
 [[package]]
