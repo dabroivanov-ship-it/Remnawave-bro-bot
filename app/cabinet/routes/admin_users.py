@@ -60,6 +60,8 @@ from ..schemas.users import (
     DeleteUserRequest,
     DeleteUserResponse,
     DeviceInfo,
+    DuplicateRegistrationItem,
+    DuplicateRegistrationsResponse,
     DisableUserRequest,
     DisableUserResponse,
     FullDeleteUserRequest,
@@ -855,6 +857,51 @@ async def get_user_detail(
             if settings.is_multi_tariff_enabled() and primary_sub and primary_sub.remnawave_uuid
             else user.remnawave_uuid
         ),
+    )
+
+
+@router.get('/{user_id}/duplicate-registrations', response_model=DuplicateRegistrationsResponse)
+async def get_user_duplicate_registrations(
+    user_id: int,
+    admin: User = Depends(require_permission('users:read')),
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """List possible re-registrations sharing this user's registration IP / software."""
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='User not found',
+        )
+
+    from app.services.registration_protection_service import find_possible_duplicate_registrations
+
+    found = await find_possible_duplicate_registrations(db, user=user)
+    matches = [
+        DuplicateRegistrationItem(
+            id=match.id,
+            telegram_id=match.telegram_id,
+            username=match.username,
+            first_name=match.first_name,
+            last_name=match.last_name,
+            full_name=match.full_name,
+            email=match.email,
+            status=match.status,
+            created_at=match.created_at,
+            balance_kopeks=match.balance_kopeks,
+            balance_rubles=match.balance_rubles,
+            registration_ip=match.registration_ip,
+            registration_user_agent=match.registration_user_agent,
+            match_by=match_by,
+        )
+        for match, match_by in found
+    ]
+
+    return DuplicateRegistrationsResponse(
+        registration_ip=user.registration_ip,
+        registration_user_agent=user.registration_user_agent,
+        total=len(matches),
+        matches=matches,
     )
 
 

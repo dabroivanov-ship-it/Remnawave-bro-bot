@@ -241,6 +241,34 @@ class UserDetailResponse(BaseModel):
     remnawave_uuid: str | None = None
 
 
+class DuplicateRegistrationItem(BaseModel):
+    """Possible re-registration match for a user."""
+
+    id: int
+    telegram_id: int | None = None
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    full_name: str
+    email: str | None = None
+    status: str
+    created_at: datetime
+    balance_kopeks: int = 0
+    balance_rubles: float = 0.0
+    registration_ip: str | None = None
+    registration_user_agent: str | None = None
+    match_by: str  # ip_and_software | ip_only
+
+
+class DuplicateRegistrationsResponse(BaseModel):
+    """Possible duplicate registrations for admin user profile."""
+
+    registration_ip: str | None = None
+    registration_user_agent: str | None = None
+    total: int = 0
+    matches: list[DuplicateRegistrationItem] = []
+
+
 # === Panel Info ===
 
 

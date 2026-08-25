@@ -58,6 +58,61 @@ async def find_duplicate_registrations(
     return list(result.scalars().all())
 
 
+async def find_possible_duplicate_registrations(
+    db: AsyncSession,
+    *,
+    user: User,
+    limit: int = 50,
+) -> list[tuple[User, str]]:
+    """Find possible re-registrations for admin profile.
+
+    Returns (matched_user, match_by) where match_by is:
+    - ``ip_and_software`` — same registration IP and user-agent
+    - ``ip_only`` — same registration IP only
+    """
+    ip = getattr(user, 'registration_ip', None)
+    user_agent = getattr(user, 'registration_user_agent', None)
+    if not ip:
+        return []
+
+    matches: list[tuple[User, str]] = []
+    seen_ids: set[int] = set()
+
+    if user_agent:
+        exact = await db.execute(
+            select(User)
+            .where(
+                and_(
+                    User.id != user.id,
+                    User.registration_ip == ip,
+                    User.registration_user_agent == user_agent,
+                )
+            )
+            .order_by(User.created_at.desc())
+            .limit(limit)
+        )
+        for match in exact.scalars().all():
+            seen_ids.add(match.id)
+            matches.append((match, 'ip_and_software'))
+
+    remaining = max(limit - len(matches), 0)
+    if remaining:
+        conditions = [
+            User.id != user.id,
+            User.registration_ip == ip,
+        ]
+        if seen_ids:
+            conditions.append(User.id.notin_(seen_ids))
+
+        ip_only = await db.execute(
+            select(User).where(and_(*conditions)).order_by(User.created_at.desc()).limit(remaining)
+        )
+        for match in ip_only.scalars().all():
+            matches.append((match, 'ip_only'))
+
+    return matches
+
+
 def _build_alert_text(user: User, ip: str | None, user_agent: str | None, matches: list[User]) -> str:
     ua_display = html.escape((user_agent or '')[:300]) or '—'
     ip_display = html.escape(ip or '—')
