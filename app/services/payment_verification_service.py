@@ -54,7 +54,7 @@ class PendingPayment:
     status: str
     is_paid: bool
     created_at: datetime
-    user: User
+    user: User | None
     payment: Any
     expires_at: datetime | None = None
 
@@ -421,10 +421,15 @@ def _parse_cryptobot_amount_kopeks(payment: CryptoBotPayment) -> int:
     return 0
 
 
+def _metadata_is_guest_purchase(payment: Any) -> bool:
+    metadata = getattr(payment, 'metadata_json', {}) or {}
+    return str(metadata.get('purpose') or '').lower() == 'guest_purchase'
+
+
 def _metadata_is_balance(payment: YooKassaPayment) -> bool:
     metadata = getattr(payment, 'metadata_json', {}) or {}
     payment_type = str(metadata.get('type') or metadata.get('payment_type') or '').lower()
-    return payment_type.startswith('balance_topup')
+    return payment_type.startswith('balance_topup') or _metadata_is_guest_purchase(payment)
 
 
 def _build_record(
@@ -438,7 +443,7 @@ def _build_record(
     expires_at: datetime | None = None,
 ) -> PendingPayment | None:
     user = getattr(payment, 'user', None)
-    if user is None:
+    if user is None and not _metadata_is_guest_purchase(payment):
         logger.debug('Skipping payment without linked user', method_value=method.value, identifier=identifier)
         return None
 
