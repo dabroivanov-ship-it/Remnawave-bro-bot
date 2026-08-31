@@ -103,6 +103,8 @@ class FinancialStats(BaseModel):
     income_total_rubles: float
     subscription_income_kopeks: int
     subscription_income_rubles: float
+    router_income_kopeks: int = 0
+    router_income_rubles: float = 0.0
 
 
 class ServerStats(BaseModel):
@@ -306,6 +308,8 @@ async def get_dashboard_stats(
                 subscription_income_kopeks=abs(all_time_stats.get('totals', {}).get('subscription_income_kopeks', 0)),
                 subscription_income_rubles=abs(all_time_stats.get('totals', {}).get('subscription_income_kopeks', 0))
                 / 100,
+                router_income_kopeks=abs(all_time_stats.get('totals', {}).get('router_income_kopeks', 0)),
+                router_income_rubles=abs(all_time_stats.get('totals', {}).get('router_income_kopeks', 0)) / 100,
             ),
             servers=ServerStats(
                 total_servers=server_stats.get('total_servers', 0),

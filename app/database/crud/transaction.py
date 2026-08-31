@@ -33,6 +33,13 @@ REAL_PAYMENT_METHODS = [
     PaymentMethod.AURAPAY.value,
 ]
 
+# Реальные поступления денег: депозиты, прямые покупки подписок и роутеров (лендинг)
+INCOME_TRANSACTION_TYPES = [
+    TransactionType.DEPOSIT.value,
+    TransactionType.SUBSCRIPTION_PAYMENT.value,
+    TransactionType.ROUTER_ORDER.value,
+]
+
 
 async def create_transaction(
     db: AsyncSession,
@@ -297,11 +304,11 @@ async def get_transactions_statistics(
     if not end_date:
         end_date = datetime.now(UTC)
 
-    # Доход считаем по реальным платежам + прямые покупки подписок (лендинги)
+    # Доход считаем по реальным платежам: депозиты + прямые покупки подписок и роутеров
     income_result = await db.execute(
         select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(
             and_(
-                Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
+                Transaction.type.in_(INCOME_TRANSACTION_TYPES),
                 Transaction.is_completed == True,
                 Transaction.created_at >= start_date,
                 Transaction.created_at <= end_date,
@@ -335,6 +342,18 @@ async def get_transactions_statistics(
     )
     subscription_income = subscription_income_result.scalar()
 
+    router_income_result = await db.execute(
+        select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(
+            and_(
+                Transaction.type == TransactionType.ROUTER_ORDER.value,
+                Transaction.is_completed == True,
+                Transaction.created_at >= start_date,
+                Transaction.created_at <= end_date,
+            )
+        )
+    )
+    router_income = router_income_result.scalar()
+
     transactions_count_result = await db.execute(
         select(
             Transaction.type,
@@ -362,7 +381,7 @@ async def get_transactions_statistics(
         )
         .where(
             and_(
-                Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
+                Transaction.type.in_(INCOME_TRANSACTION_TYPES),
                 Transaction.is_completed == True,
                 Transaction.created_at >= start_date,
                 Transaction.created_at <= end_date,
@@ -382,11 +401,11 @@ async def get_transactions_statistics(
     )
     transactions_today = today_result.scalar()
 
-    # Доход за сегодня — реальные платежи + прямые покупки подписок (лендинги)
+    # Доход за сегодня — реальные платежи + прямые покупки подписок и роутеров
     today_income_result = await db.execute(
         select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(
             and_(
-                Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
+                Transaction.type.in_(INCOME_TRANSACTION_TYPES),
                 Transaction.is_completed == True,
                 Transaction.created_at >= today,
                 Transaction.payment_method.in_(REAL_PAYMENT_METHODS),
@@ -402,6 +421,7 @@ async def get_transactions_statistics(
             'expenses_kopeks': total_expenses,
             'profit_kopeks': total_income - total_expenses,
             'subscription_income_kopeks': subscription_income,
+            'router_income_kopeks': router_income,
         },
         'today': {'transactions_count': transactions_today, 'income_kopeks': income_today},
         'by_type': transactions_by_type,
@@ -410,7 +430,7 @@ async def get_transactions_statistics(
 
 
 async def get_revenue_by_period(db: AsyncSession, days: int = 30) -> list[dict]:
-    """Доход по дням — реальные платежи + прямые покупки подписок (лендинги)."""
+    """Доход по дням — реальные платежи + прямые покупки подписок и роутеров."""
     start_date = datetime.now(UTC) - timedelta(days=days)
 
     result = await db.execute(
@@ -420,7 +440,7 @@ async def get_revenue_by_period(db: AsyncSession, days: int = 30) -> list[dict]:
         )
         .where(
             and_(
-                Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
+                Transaction.type.in_(INCOME_TRANSACTION_TYPES),
                 Transaction.is_completed == True,
                 Transaction.created_at >= start_date,
                 Transaction.payment_method.in_(REAL_PAYMENT_METHODS),

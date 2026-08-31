@@ -148,6 +148,7 @@ async def show_revenue_statistics(callback: types.CallbackQuery, db_user: User, 
 - Расходы: {settings.format_price(month_stats['totals']['expenses_kopeks'])}
 - Прибыль: {settings.format_price(month_stats['totals']['profit_kopeks'])}
 - От подписок: {settings.format_price(abs(month_stats['totals']['subscription_income_kopeks']))}
+- От роутеров: {settings.format_price(abs(month_stats['totals'].get('router_income_kopeks', 0)))}
 
 <b>Сегодня:</b>
 - Транзакций: {month_stats['today']['transactions_count']}
