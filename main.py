@@ -41,6 +41,7 @@ from app.services.infra_billing_notify_service import infra_billing_notify_servi
 from app.services.riopay_service import riopay_service
 from app.services.system_settings_service import bot_configuration_service
 from app.services.traffic_monitoring_service import traffic_monitoring_scheduler
+from app.services.ip_control_service import ip_control_scheduler
 from app.services.version_service import version_service
 from app.services.web_api_token_service import ensure_default_web_api_token
 from app.utils.log_handlers import ExcludePaymentFilter, LevelFilterHandler
@@ -174,6 +175,7 @@ async def main():
     monitoring_task = None
     maintenance_task = None
     traffic_monitoring_task = None
+    ip_control_task = None
     daily_subscription_task = None
     polling_task = None
     web_api_server = None
@@ -308,6 +310,7 @@ async def main():
         broadcast_service.set_bot(bot)
         ban_notification_service.set_bot(bot)
         traffic_monitoring_scheduler.set_bot(bot)
+        ip_control_scheduler.set_bot(bot)
         daily_subscription_service.set_bot(bot)
         telegram_notifier.set_bot(bot)
 
@@ -654,6 +657,19 @@ async def main():
                 stage.skip('Мониторинг трафика отключен настройками')
 
         async with timeline.stage(
+            'Контроль IP',
+            '🛡️',
+            success_message='Контроль уникальных IP запущен',
+        ) as stage:
+            ip_control_task = asyncio.create_task(ip_control_scheduler.start_monitoring())
+            if ip_control_scheduler.service.is_enabled():
+                threshold = ip_control_scheduler.service.get_threshold()
+                interval = ip_control_scheduler.service.get_interval_seconds() // 60
+                stage.log(f'Порог {threshold} IP, интервал {interval} мин')
+            else:
+                stage.skip('Контроль IP выключен — планировщик ждёт включения в настройках')
+
+        async with timeline.stage(
             'Суточные подписки',
             '💳',
             success_message='Сервис суточных подписок запущен',
@@ -771,6 +787,13 @@ async def main():
                                 traffic_monitoring_scheduler.start_monitoring()
                             )
 
+                if ip_control_task and ip_control_task.done():
+                    exception = ip_control_task.exception()
+                    if exception:
+                        logger.error('Контроль IP завершился с ошибкой', error=exception)
+                        logger.info('🔄 Перезапуск контроля IP...')
+                        ip_control_task = asyncio.create_task(ip_control_scheduler.start_monitoring())
+
                 if daily_subscription_task and daily_subscription_task.done():
                     exception = daily_subscription_task.exception()
                     if exception:
@@ -833,6 +856,15 @@ async def main():
             traffic_monitoring_task.cancel()
             try:
                 await traffic_monitoring_task
+            except asyncio.CancelledError:
+                pass
+
+        if ip_control_task and not ip_control_task.done():
+            logger.info('ℹ️ Остановка контроля IP...')
+            ip_control_scheduler.stop_monitoring()
+            ip_control_task.cancel()
+            try:
+                await ip_control_task
             except asyncio.CancelledError:
                 pass
 

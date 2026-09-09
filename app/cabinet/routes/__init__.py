@@ -20,6 +20,7 @@ from .admin_email_templates import router as admin_email_templates_router
 from .admin_guides import router as admin_guides_router
 from .admin_infra_billing import router as admin_infra_billing_router
 from .admin_info_pages import router as admin_info_pages_router
+from .admin_ip_control import router as admin_ip_control_router
 from .admin_landings import router as admin_landings_router
 from .admin_menu_layout import router as admin_menu_layout_router
 from .admin_news import router as admin_news_router
@@ -130,6 +131,7 @@ router.include_router(admin_stats_router)
 router.include_router(admin_referral_network_router)
 router.include_router(admin_sales_stats_router)
 router.include_router(admin_ban_system_router)
+router.include_router(admin_ip_control_router)
 router.include_router(admin_broadcasts_router)
 router.include_router(admin_promocodes_router)
 router.include_router(admin_promo_groups_router)

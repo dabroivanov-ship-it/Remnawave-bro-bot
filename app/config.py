@@ -327,6 +327,14 @@ class Settings(BaseSettings):
     TRAFFIC_CHECK_CONCURRENCY: int = 10  # Параллельных запросов
     TRAFFIC_NOTIFICATION_COOLDOWN_MINUTES: int = 60  # Кулдаун уведомлений (минуты)
     TRAFFIC_SNAPSHOT_TTL_HOURS: int = 24  # TTL для snapshot трафика в Redis (часы)
+
+    # Контроль уникальных IP (шаринг подписок, данные из Remnawave)
+    IP_CONTROL_ENABLED: bool = True
+    IP_CONTROL_UNIQUE_IP_THRESHOLD: int = 5  # Алерт, если уникальных IP >= порога
+    IP_CONTROL_WINDOW_HOURS: int = 24  # Окно, в котором считаем IP
+    IP_CONTROL_INTERVAL_MINUTES: int = 60  # Интервал фоновой проверки
+    IP_CONTROL_COOLDOWN_HOURS: int = 12  # Не слать повторный алерт по тому же пользователю чаще
+
     # Настройки суточных подписок
     DAILY_SUBSCRIPTIONS_ENABLED: bool = True  # Включить автоматическое списание для суточных тарифов
     DAILY_SUBSCRIPTIONS_CHECK_INTERVAL_MINUTES: int = 30  # Интервал проверки в минутах

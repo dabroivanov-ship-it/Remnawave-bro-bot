@@ -325,6 +325,11 @@ class BotConfigurationService:
         'SUSPICIOUS_NOTIFICATIONS_TOPIC_ID': 'MONITORING',
         'TRAFFIC_CHECK_BATCH_SIZE': 'MONITORING',
         'TRAFFIC_CHECK_CONCURRENCY': 'MONITORING',
+        'IP_CONTROL_ENABLED': 'MONITORING',
+        'IP_CONTROL_UNIQUE_IP_THRESHOLD': 'MONITORING',
+        'IP_CONTROL_WINDOW_HOURS': 'MONITORING',
+        'IP_CONTROL_INTERVAL_MINUTES': 'MONITORING',
+        'IP_CONTROL_COOLDOWN_HOURS': 'MONITORING',
         'ENABLE_LOGO_MODE': 'INTERFACE_BRANDING',
         'LOGO_FILE': 'INTERFACE_BRANDING',
         'HIDE_SUBSCRIPTION_LINK': 'INTERFACE_SUBSCRIPTION',
@@ -992,6 +997,45 @@ class BotConfigurationService:
             'format': 'Целое число минут.',
             'example': '60',
             'warning': 'Защита от спама уведомлениями по одному и тому же пользователю.',
+        },
+        'IP_CONTROL_ENABLED': {
+            'description': (
+                'Контроль уникальных IP по данным Remnawave: история запросов подписки и HWID-устройства. '
+                'При большом числе разных IP админу приходит уведомление в Telegram о возможном шаринге.'
+            ),
+            'format': 'Булево значение.',
+            'example': 'true',
+            'warning': 'Требует настроенный Remnawave API. Уведомления идут в топик SUSPICIOUS_NOTIFICATIONS_TOPIC_ID.',
+            'dependencies': 'Remnawave API, SUSPICIOUS_NOTIFICATIONS_TOPIC_ID, ADMIN_NOTIFICATIONS_CHAT_ID',
+        },
+        'IP_CONTROL_UNIQUE_IP_THRESHOLD': {
+            'description': (
+                'Порог уникальных IP за окно проверки. Если у подписки столько или больше разных IP — '
+                'считаем это возможным шарингом и шлём уведомление.'
+            ),
+            'format': 'Целое число (минимум 2).',
+            'example': '5',
+            'warning': 'Слишком низкий порог даст ложные срабатывания (смена Wi‑Fi / LTE).',
+            'dependencies': 'IP_CONTROL_ENABLED',
+        },
+        'IP_CONTROL_WINDOW_HOURS': {
+            'description': 'За сколько часов считать уникальные IP из истории запросов Remnawave.',
+            'format': 'Целое число часов (минимум 1).',
+            'example': '24',
+            'dependencies': 'IP_CONTROL_ENABLED',
+        },
+        'IP_CONTROL_INTERVAL_MINUTES': {
+            'description': 'Как часто фоново проверять уникальные IP всех недавно активных пользователей.',
+            'format': 'Целое число минут (минимум 5).',
+            'example': '60',
+            'warning': 'Частые проверки нагружают Remnawave API.',
+            'dependencies': 'IP_CONTROL_ENABLED',
+        },
+        'IP_CONTROL_COOLDOWN_HOURS': {
+            'description': 'Не повторять Telegram-уведомление по одному и тому же пользователю чаще этого интервала.',
+            'format': 'Целое число часов (минимум 1).',
+            'example': '12',
+            'dependencies': 'IP_CONTROL_ENABLED',
         },
         'REMNAWAVE_WEBHOOK_NOTIFY_NODE_CONNECTION_STATUS': {
             'description': (
