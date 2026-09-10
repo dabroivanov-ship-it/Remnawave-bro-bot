@@ -17,6 +17,7 @@ from app.database.database import AsyncSessionLocal
 from app.external.remnawave_api import UserStatus
 from app.services.admin_notification_service import AdminNotificationService
 from app.services.ip_control_utils import (
+    count_sources,
     extract_ip,
     extract_panel_user_id,
     is_sharing_threshold,
@@ -40,6 +41,7 @@ MAX_ALERTS_PER_RUN = 10
 class IpControlOffender:
     panel_user_id: int
     unique_ip_count: int
+    address_count: int
     device_count: int
     ips: list[str]
     telegram_id: int | None = None
@@ -262,12 +264,18 @@ class IpControlService:
 
             ip_preview = ', '.join(f'<code>{html.escape(ip)}</code>' for ip in offender.ips[:IP_SAMPLE_LIMIT])
             extra = '' if len(offender.ips) <= IP_SAMPLE_LIMIT else f' (+{len(offender.ips) - IP_SAMPLE_LIMIT})'
+            sources_line = f'🌐 Источников: <b>{offender.unique_ip_count}</b> (порог {self.get_threshold()})'
+            if offender.address_count > offender.unique_ip_count:
+                sources_line = (
+                    f'🌐 Источников: <b>{offender.unique_ip_count}</b> '
+                    f'({offender.address_count} адресов, порог {self.get_threshold()})'
+                )
 
             message = (
                 '⚠️ <b>Возможный шаринг подписки</b>\n\n'
                 + '\n'.join(user_lines)
                 + f'\n🔑 Panel ID: <code>{offender.panel_user_id}</code>\n\n'
-                f'🌐 Уникальных IP: <b>{offender.unique_ip_count}</b> (порог {self.get_threshold()})\n'
+                f'{sources_line}\n'
                 f'📱 HWID-устройств: <b>{offender.device_count}</b>\n'
             )
             if offender.device_limit:
@@ -324,7 +332,7 @@ class IpControlService:
                 online_at = parse_request_time(getattr(user, 'online_at', None))
                 recently_online = online_at is not None and online_at >= cutoff
                 panel_id = int(user.id)
-                already_hot = len(ips_by_user.get(panel_id, set())) >= threshold
+                already_hot = count_sources(ips_by_user.get(panel_id, set())) >= threshold
                 if recently_online or already_hot:
                     candidates.append(user)
 
@@ -332,14 +340,21 @@ class IpControlService:
 
         offenders: list[IpControlOffender] = []
         checked_ids = {int(user.id) for user in candidates}
-        for panel_id in sorted(checked_ids | {pid for pid, ips in ips_by_user.items() if is_sharing_threshold(len(ips), threshold)}):
+        hot_from_devices = {
+            pid
+            for pid, ips in ips_by_user.items()
+            if is_sharing_threshold(count_sources(ips), threshold)
+        }
+        for panel_id in sorted(checked_ids | hot_from_devices):
             ips = sorted(ips_by_user.get(panel_id, set()))
-            if not is_sharing_threshold(len(ips), threshold):
+            source_count = count_sources(ips)
+            if not is_sharing_threshold(source_count, threshold):
                 continue
             offenders.append(
                 IpControlOffender(
                     panel_user_id=panel_id,
-                    unique_ip_count=len(ips),
+                    unique_ip_count=source_count,
+                    address_count=len(ips),
                     device_count=devices_by_user.get(panel_id, 0),
                     ips=ips,
                 )

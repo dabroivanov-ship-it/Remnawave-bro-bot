@@ -41,6 +41,7 @@ class IpControlSettingsUpdate(BaseModel):
 class IpControlOffenderResponse(BaseModel):
     panel_user_id: int
     unique_ip_count: int
+    address_count: int = 0
     device_count: int
     ips: list[str]
     telegram_id: int | None = None
@@ -77,6 +78,11 @@ def _status_payload(scan: dict[str, Any] | None = None) -> IpControlStatusRespon
             if not isinstance(item, dict):
                 continue
             try:
+                if not item.get('address_count'):
+                    item = {
+                        **item,
+                        'address_count': len(item.get('ips') or []) or item.get('unique_ip_count') or 0,
+                    }
                 offenders.append(IpControlOffenderResponse.model_validate(item))
             except Exception:
                 continue
@@ -122,6 +128,7 @@ async def run_ip_control_scan(
                 {
                     'panel_user_id': item.panel_user_id,
                     'unique_ip_count': item.unique_ip_count,
+                    'address_count': item.address_count,
                     'device_count': item.device_count,
                     'ips': item.ips,
                     'telegram_id': item.telegram_id,

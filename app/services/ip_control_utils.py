@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import ipaddress
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
+
+# Neighbor addresses in one operator pool count as one source, not a crowd.
+# /24 covers a typical CGNAT/NAT block without merging half a city.
+IPV4_SOURCE_PREFIX = 24
+# An IPv6 subscriber is usually given a whole /64.
+IPV6_SOURCE_PREFIX = 64
 
 
 def extract_ip(payload: dict[str, Any] | None) -> str | None:
@@ -71,6 +79,25 @@ def unique_ips_from_history(
         seen.add(ip)
         ordered.append(ip)
     return ordered
+
+
+def source_key(ip: str) -> str:
+    """Collapse an address to its sharing source: IPv4 /24 or IPv6 /64."""
+    text = str(ip).strip()
+    if not text:
+        return text
+    try:
+        address = ipaddress.ip_address(text)
+    except ValueError:
+        return text
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    prefix = IPV6_SOURCE_PREFIX if address.version == 6 else IPV4_SOURCE_PREFIX
+    return str(ipaddress.ip_network(f'{address}/{prefix}', strict=False))
+
+
+def count_sources(ips: Iterable[str]) -> int:
+    return len({source_key(ip) for ip in ips if ip})
 
 
 def is_sharing_threshold(unique_ip_count: int, threshold: int) -> bool:

@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
 from app.services.ip_control_utils import (
+    count_sources,
     extract_ip,
     extract_panel_user_id,
     is_sharing_threshold,
     parse_request_time,
+    source_key,
     unique_ips_from_history,
 )
 
@@ -48,3 +50,31 @@ def test_parse_request_time_zulu():
     assert parsed is not None
     assert parsed.tzinfo is not None
     assert parsed.hour == 12
+
+
+def test_source_key_collapses_ipv4_slash_24():
+    assert source_key('10.20.30.1') == '10.20.30.0/24'
+    assert source_key('10.20.30.1') == source_key('10.20.30.254')
+    assert source_key('10.20.31.1') != source_key('10.20.30.1')
+
+
+def test_source_key_collapses_ipv6_slash_64():
+    assert source_key('2001:db8:1:2::1') == source_key('2001:db8:1:2::ffff')
+    assert source_key('2001:db8:1:3::1') != source_key('2001:db8:1:2::1')
+
+
+def test_source_key_maps_ipv4_mapped_ipv6():
+    assert source_key('::ffff:10.20.30.4') == source_key('10.20.30.99')
+
+
+def test_count_sources_treats_cgnat_pool_as_one():
+    ips = ['188.170.87.10', '188.170.87.11', '188.170.87.200', '8.8.8.8']
+    assert count_sources(ips) == 2
+    assert is_sharing_threshold(count_sources(ips), 5) is False
+    assert is_sharing_threshold(len(ips), 5) is False
+    many_in_one_net = [f'10.0.0.{n}' for n in range(1, 8)]
+    assert len(many_in_one_net) == 7
+    assert count_sources(many_in_one_net) == 1
+    mixed = many_in_one_net + ['10.0.1.1', '10.0.2.1', '10.0.3.1', '10.0.4.1']
+    assert count_sources(mixed) == 5
+    assert is_sharing_threshold(count_sources(mixed), 5) is True

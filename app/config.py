@@ -330,7 +330,7 @@ class Settings(BaseSettings):
 
     # Контроль уникальных IP (шаринг подписок, данные из Remnawave)
     IP_CONTROL_ENABLED: bool = True
-    IP_CONTROL_UNIQUE_IP_THRESHOLD: int = 5  # Алерт, если уникальных IP >= порога
+    IP_CONTROL_UNIQUE_IP_THRESHOLD: int = 5  # Алерт, если источников (/24, /64) >= порога
     IP_CONTROL_WINDOW_HOURS: int = 24  # Окно, в котором считаем IP
     IP_CONTROL_INTERVAL_MINUTES: int = 60  # Интервал фоновой проверки
     IP_CONTROL_COOLDOWN_HOURS: int = 12  # Не слать повторный алерт по тому же пользователю чаще
