@@ -102,3 +102,35 @@ def count_sources(ips: Iterable[str]) -> int:
 
 def is_sharing_threshold(unique_ip_count: int, threshold: int) -> bool:
     return unique_ip_count >= max(2, threshold)
+
+
+def normalize_chat_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def normalize_topic_id(value: Any) -> int | None:
+    if value is None or value == '':
+        return None
+    try:
+        topic = int(value)
+    except (TypeError, ValueError):
+        return None
+    return topic or None
+
+
+def resolve_alert_destination(
+    chat_id: Any,
+    topic_id: Any,
+    *,
+    default_chat_id: Any = None,
+    default_topic_id: Any = None,
+    fallback_topic_id: Any = None,
+) -> tuple[str | None, int | None]:
+    chat = normalize_chat_id(chat_id) or normalize_chat_id(default_chat_id)
+    topic = normalize_topic_id(topic_id)
+    if topic is None:
+        topic = normalize_topic_id(default_topic_id) or normalize_topic_id(fallback_topic_id)
+    return chat, topic

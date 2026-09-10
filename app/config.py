@@ -334,6 +334,8 @@ class Settings(BaseSettings):
     IP_CONTROL_WINDOW_HOURS: int = 24  # Окно, в котором считаем IP
     IP_CONTROL_INTERVAL_MINUTES: int = 60  # Интервал фоновой проверки
     IP_CONTROL_COOLDOWN_HOURS: int = 12  # Не слать повторный алерт по тому же пользователю чаще
+    IP_CONTROL_CHAT_ID: str | None = None  # Куда слать алерты; пусто — ADMIN_NOTIFICATIONS_CHAT_ID
+    IP_CONTROL_TOPIC_ID: int | None = None  # Топик алертов; пусто — SUSPICIOUS_NOTIFICATIONS_TOPIC_ID
 
     # Настройки суточных подписок
     DAILY_SUBSCRIPTIONS_ENABLED: bool = True  # Включить автоматическое списание для суточных тарифов

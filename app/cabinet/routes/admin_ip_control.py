@@ -6,10 +6,9 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database.models import User
 from app.services.ip_control_service import ip_control_scheduler, ip_control_service
 from app.services.system_settings_service import ReadOnlySettingError, bot_configuration_service
@@ -27,6 +26,8 @@ _EDITABLE_KEYS = {
     'window_hours': 'IP_CONTROL_WINDOW_HOURS',
     'interval_minutes': 'IP_CONTROL_INTERVAL_MINUTES',
     'cooldown_hours': 'IP_CONTROL_COOLDOWN_HOURS',
+    'chat_id': 'IP_CONTROL_CHAT_ID',
+    'topic_id': 'IP_CONTROL_TOPIC_ID',
 }
 
 
@@ -36,6 +37,23 @@ class IpControlSettingsUpdate(BaseModel):
     window_hours: int | None = Field(None, ge=1, le=168)
     interval_minutes: int | None = Field(None, ge=5, le=1440)
     cooldown_hours: int | None = Field(None, ge=1, le=168)
+    chat_id: str | None = None
+    topic_id: int | None = Field(None, ge=0)
+
+    @field_validator('chat_id', mode='before')
+    @classmethod
+    def empty_chat_id(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @field_validator('topic_id', mode='before')
+    @classmethod
+    def empty_topic_id(cls, value: Any) -> int | None:
+        if value in (None, '', 0, '0'):
+            return None
+        return value
 
 
 class IpControlOffenderResponse(BaseModel):
@@ -60,7 +78,12 @@ class IpControlStatusResponse(BaseModel):
     cooldown_hours: int
     scheduler_running: bool
     remnawave_configured: bool
+    chat_id: str | None = None
     topic_id: int | None = None
+    default_chat_id: str | None = None
+    default_topic_id: int | None = None
+    effective_chat_id: str | None = None
+    effective_topic_id: int | None = None
     scanned_at: str | None = None
     users_checked: int = 0
     offender_count: int = 0
@@ -94,7 +117,12 @@ def _status_payload(scan: dict[str, Any] | None = None) -> IpControlStatusRespon
         cooldown_hours=snapshot['cooldown_hours'],
         scheduler_running=ip_control_scheduler.is_running(),
         remnawave_configured=ip_control_service.remnawave_service.is_configured,
-        topic_id=settings.SUSPICIOUS_NOTIFICATIONS_TOPIC_ID,
+        chat_id=snapshot.get('chat_id'),
+        topic_id=snapshot.get('topic_id'),
+        default_chat_id=snapshot.get('default_chat_id'),
+        default_topic_id=snapshot.get('default_topic_id'),
+        effective_chat_id=snapshot.get('effective_chat_id'),
+        effective_topic_id=snapshot.get('effective_topic_id'),
         scanned_at=last.get('scanned_at') if last else None,
         users_checked=int(last.get('users_checked') or 0) if last else 0,
         offender_count=int(last.get('offender_count') or 0) if last else 0,

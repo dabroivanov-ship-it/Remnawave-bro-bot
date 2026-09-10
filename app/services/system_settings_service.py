@@ -330,6 +330,8 @@ class BotConfigurationService:
         'IP_CONTROL_WINDOW_HOURS': 'MONITORING',
         'IP_CONTROL_INTERVAL_MINUTES': 'MONITORING',
         'IP_CONTROL_COOLDOWN_HOURS': 'MONITORING',
+        'IP_CONTROL_CHAT_ID': 'MONITORING',
+        'IP_CONTROL_TOPIC_ID': 'MONITORING',
         'ENABLE_LOGO_MODE': 'INTERFACE_BRANDING',
         'LOGO_FILE': 'INTERFACE_BRANDING',
         'HIDE_SUBSCRIPTION_LINK': 'INTERFACE_SUBSCRIPTION',
@@ -1006,8 +1008,8 @@ class BotConfigurationService:
             ),
             'format': 'Булево значение.',
             'example': 'true',
-            'warning': 'Требует настроенный Remnawave API. Уведомления идут в топик SUSPICIOUS_NOTIFICATIONS_TOPIC_ID.',
-            'dependencies': 'Remnawave API, SUSPICIOUS_NOTIFICATIONS_TOPIC_ID, ADMIN_NOTIFICATIONS_CHAT_ID',
+            'warning': 'Требует настроенный Remnawave API. Чат и топик задаются в Контроле IP.',
+            'dependencies': 'Remnawave API, IP_CONTROL_CHAT_ID, IP_CONTROL_TOPIC_ID, ADMIN_NOTIFICATIONS_CHAT_ID',
         },
         'IP_CONTROL_UNIQUE_IP_THRESHOLD': {
             'description': (
@@ -1037,6 +1039,24 @@ class BotConfigurationService:
             'format': 'Целое число часов (минимум 1).',
             'example': '12',
             'dependencies': 'IP_CONTROL_ENABLED',
+        },
+        'IP_CONTROL_CHAT_ID': {
+            'description': (
+                'Telegram-чат для уведомлений контроля IP. Если пусто — используется общий '
+                'ADMIN_NOTIFICATIONS_CHAT_ID.'
+            ),
+            'format': 'ID чата (обычно -100… для супергруппы).',
+            'example': '-1001234567890',
+            'dependencies': 'IP_CONTROL_ENABLED',
+        },
+        'IP_CONTROL_TOPIC_ID': {
+            'description': (
+                'Топик форума для уведомлений контроля IP. Если пусто — SUSPICIOUS_NOTIFICATIONS_TOPIC_ID, '
+                'затем общий ADMIN_NOTIFICATIONS_TOPIC_ID, иначе корень чата.'
+            ),
+            'format': 'Целое число ID топика. Пусто или 0 — взять запасной топик.',
+            'example': '14',
+            'dependencies': 'IP_CONTROL_ENABLED, IP_CONTROL_CHAT_ID',
         },
         'REMNAWAVE_WEBHOOK_NOTIFY_NODE_CONNECTION_STATUS': {
             'description': (

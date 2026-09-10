@@ -6,6 +6,7 @@ from app.services.ip_control_utils import (
     extract_panel_user_id,
     is_sharing_threshold,
     parse_request_time,
+    resolve_alert_destination,
     source_key,
     unique_ips_from_history,
 )
@@ -37,6 +38,42 @@ def test_unique_ips_from_history_filters_window_and_duplicates():
     cutoff = now - timedelta(hours=24)
     ips = unique_ips_from_history(records, cutoff=cutoff)
     assert ips == ['10.0.0.1', '10.0.0.2', '10.0.0.4']
+
+
+def test_resolve_alert_destination_uses_ip_control_override():
+    chat, topic = resolve_alert_destination(
+        '-100111',
+        21,
+        default_chat_id='-100000',
+        default_topic_id=14,
+        fallback_topic_id=1,
+    )
+    assert chat == '-100111'
+    assert topic == 21
+
+
+def test_resolve_alert_destination_falls_back_when_empty():
+    chat, topic = resolve_alert_destination(
+        '  ',
+        0,
+        default_chat_id='-100000',
+        default_topic_id=14,
+        fallback_topic_id=1,
+    )
+    assert chat == '-100000'
+    assert topic == 14
+
+
+def test_resolve_alert_destination_uses_general_topic_if_suspicious_missing():
+    chat, topic = resolve_alert_destination(
+        None,
+        None,
+        default_chat_id='-100000',
+        default_topic_id=None,
+        fallback_topic_id=3,
+    )
+    assert chat == '-100000'
+    assert topic == 3
 
 
 def test_sharing_threshold():

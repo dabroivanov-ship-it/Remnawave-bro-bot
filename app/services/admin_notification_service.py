@@ -2146,7 +2146,13 @@ class AdminNotificationService:
             # Fallback: отправляем хотя бы текст
             return await self._send_message(text, reply_markup=keyboard, category=NotificationCategory.TICKETS)
 
-    async def send_suspicious_traffic_notification(self, message: str, bot: Bot, topic_id: int | None = None) -> bool:
+    async def send_suspicious_traffic_notification(
+        self,
+        message: str,
+        bot: Bot,
+        topic_id: int | None = None,
+        chat_id: str | int | None = None,
+    ) -> bool:
         """
         Отправляет уведомление о подозрительной активности трафика
 
@@ -2154,8 +2160,10 @@ class AdminNotificationService:
             message: текст уведомления
             bot: экземпляр бота для отправки сообщения
             topic_id: ID топика для отправки уведомления (если не указан, использует стандартный)
+            chat_id: чат для отправки (если не указан, использует ADMIN_NOTIFICATIONS_CHAT_ID)
         """
-        if not self.chat_id:
+        target_chat = chat_id or self.chat_id
+        if not target_chat:
             logger.warning('ADMIN_NOTIFICATIONS_CHAT_ID не настроен')
             return False
 
@@ -2164,7 +2172,7 @@ class AdminNotificationService:
 
         try:
             message_kwargs = {
-                'chat_id': self.chat_id,
+                'chat_id': target_chat,
                 'text': message,
                 'parse_mode': 'HTML',
                 'disable_web_page_preview': True,
@@ -2176,13 +2184,13 @@ class AdminNotificationService:
             await bot.send_message(**message_kwargs)
             logger.info(
                 'Уведомление о подозрительной активности отправлено в чат топик',
-                chat_id=self.chat_id,
+                chat_id=target_chat,
                 notification_topic_id=notification_topic_id,
             )
             return True
 
         except TelegramForbiddenError:
-            logger.error('Бот не имеет прав для отправки в чат', chat_id=self.chat_id)
+            logger.error('Бот не имеет прав для отправки в чат', chat_id=target_chat)
             return False
         except TelegramBadRequest as e:
             logger.error('Ошибка отправки уведомления о подозрительной активности', error=e)

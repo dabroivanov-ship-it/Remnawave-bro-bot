@@ -21,7 +21,10 @@ from app.services.ip_control_utils import (
     extract_ip,
     extract_panel_user_id,
     is_sharing_threshold,
+    normalize_chat_id,
+    normalize_topic_id,
     parse_request_time,
+    resolve_alert_destination,
     unique_ips_from_history,
 )
 from app.services.remnawave_service import RemnaWaveService
@@ -94,13 +97,41 @@ class IpControlService:
         return max(50, int(getattr(settings, 'TRAFFIC_CHECK_BATCH_SIZE', 1000) or 1000))
 
     def get_settings_snapshot(self) -> dict[str, Any]:
+        chat_id, topic_id = self.get_alert_destination()
         return {
             'enabled': self.is_enabled(),
             'threshold': self.get_threshold(),
             'window_hours': self.get_window_hours(),
             'interval_minutes': self.get_interval_seconds() // 60,
             'cooldown_hours': self.get_cooldown_seconds() // 3600,
+            'chat_id': self.get_configured_chat_id(),
+            'topic_id': self.get_configured_topic_id(),
+            'default_chat_id': self.get_default_chat_id(),
+            'default_topic_id': self.get_default_topic_id(),
+            'effective_chat_id': chat_id,
+            'effective_topic_id': topic_id,
         }
+
+    def get_configured_chat_id(self) -> str | None:
+        return normalize_chat_id(getattr(settings, 'IP_CONTROL_CHAT_ID', None))
+
+    def get_configured_topic_id(self) -> int | None:
+        return normalize_topic_id(getattr(settings, 'IP_CONTROL_TOPIC_ID', None))
+
+    def get_default_chat_id(self) -> str | None:
+        return normalize_chat_id(getattr(settings, 'ADMIN_NOTIFICATIONS_CHAT_ID', None))
+
+    def get_default_topic_id(self) -> int | None:
+        return normalize_topic_id(getattr(settings, 'SUSPICIOUS_NOTIFICATIONS_TOPIC_ID', None))
+
+    def get_alert_destination(self) -> tuple[str | None, int | None]:
+        return resolve_alert_destination(
+            self.get_configured_chat_id(),
+            self.get_configured_topic_id(),
+            default_chat_id=self.get_default_chat_id(),
+            default_topic_id=self.get_default_topic_id(),
+            fallback_topic_id=getattr(settings, 'ADMIN_NOTIFICATIONS_TOPIC_ID', None),
+        )
 
     async def get_last_scan(self) -> dict[str, Any] | None:
         try:
@@ -246,7 +277,7 @@ class IpControlService:
         if not bot or not offenders:
             return 0
         admin_service = AdminNotificationService(bot)
-        topic_id = settings.SUSPICIOUS_NOTIFICATIONS_TOPIC_ID
+        chat_id, topic_id = self.get_alert_destination()
         sent = 0
         for offender in offenders[:MAX_ALERTS_PER_RUN]:
             if not await self._should_notify(offender.panel_user_id):
@@ -285,7 +316,9 @@ class IpControlService:
             message += f'\n\n⏰ {datetime.now(UTC).strftime("%d.%m.%Y %H:%M")} UTC'
 
             try:
-                ok = await admin_service.send_suspicious_traffic_notification(message, bot, topic_id)
+                ok = await admin_service.send_suspicious_traffic_notification(
+                    message, bot, topic_id, chat_id=chat_id
+                )
             except Exception as error:
                 logger.warning(
                     'Failed to send IP control alert',
