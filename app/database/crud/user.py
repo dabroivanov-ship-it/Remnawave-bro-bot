@@ -973,6 +973,67 @@ async def cleanup_expired_promo_offer_discounts(db: AsyncSession) -> int:
     return len(users)
 
 
+def _subscription_user_match_clause(
+    subscription_status: str | None,
+    tariff_ids: list[int] | None,
+):
+    """Match users by paid/trial/expired/none, or by raw Subscription.status."""
+    if not subscription_status and not tariff_ids:
+        return None
+
+    now = datetime.now(UTC)
+    still_valid = or_(Subscription.end_date.is_(None), Subscription.end_date > now)
+
+    if subscription_status == 'none':
+        return ~exists(select(Subscription.id).where(Subscription.user_id == User.id))
+
+    conditions = []
+    if subscription_status == 'paid':
+        conditions.extend(
+            [
+                Subscription.is_trial.is_(False),
+                Subscription.status.in_(
+                    (SubscriptionStatus.ACTIVE.value, SubscriptionStatus.LIMITED.value)
+                ),
+                still_valid,
+            ]
+        )
+    elif subscription_status == 'trial':
+        conditions.extend(
+            [
+                or_(
+                    Subscription.is_trial.is_(True),
+                    Subscription.status == SubscriptionStatus.TRIAL.value,
+                ),
+                Subscription.status.in_(
+                    (
+                        SubscriptionStatus.TRIAL.value,
+                        SubscriptionStatus.ACTIVE.value,
+                        SubscriptionStatus.LIMITED.value,
+                    )
+                ),
+                still_valid,
+            ]
+        )
+    elif subscription_status == 'expired':
+        conditions.append(
+            or_(
+                Subscription.status == SubscriptionStatus.EXPIRED.value,
+                and_(Subscription.end_date.is_not(None), Subscription.end_date <= now),
+            )
+        )
+    elif subscription_status:
+        conditions.append(Subscription.status == subscription_status)
+
+    if tariff_ids:
+        conditions.append(Subscription.tariff_id.in_(tariff_ids))
+
+    sub_query = select(Subscription.user_id)
+    if conditions:
+        sub_query = sub_query.where(and_(*conditions))
+    return User.id.in_(sub_query.distinct().scalar_subquery())
+
+
 async def get_users_list(
     db: AsyncSession,
     offset: int = 0,
@@ -1000,15 +1061,9 @@ async def get_users_list(
     if status:
         query = query.where(User.status == status.value)
 
-    # Subscription-level filters via subquery
-    if subscription_status or tariff_ids:
-        sub_conditions = []
-        if subscription_status:
-            sub_conditions.append(Subscription.status == subscription_status)
-        if tariff_ids:
-            sub_conditions.append(Subscription.tariff_id.in_(tariff_ids))
-        sub_query = select(Subscription.user_id).where(and_(*sub_conditions)).distinct().scalar_subquery()
-        query = query.where(User.id.in_(sub_query))
+    subscription_clause = _subscription_user_match_clause(subscription_status, tariff_ids)
+    if subscription_clause is not None:
+        query = query.where(subscription_clause)
 
     if promo_group_id:
         query = query.where(User.promo_group_id == promo_group_id)
@@ -1116,14 +1171,9 @@ async def get_users_count(
     if status:
         query = query.where(User.status == status.value)
 
-    if subscription_status or tariff_ids:
-        sub_conditions = []
-        if subscription_status:
-            sub_conditions.append(Subscription.status == subscription_status)
-        if tariff_ids:
-            sub_conditions.append(Subscription.tariff_id.in_(tariff_ids))
-        sub_query = select(Subscription.user_id).where(and_(*sub_conditions)).distinct().scalar_subquery()
-        query = query.where(User.id.in_(sub_query))
+    subscription_clause = _subscription_user_match_clause(subscription_status, tariff_ids)
+    if subscription_clause is not None:
+        query = query.where(subscription_clause)
 
     if promo_group_id:
         query = query.where(User.promo_group_id == promo_group_id)
@@ -1355,10 +1405,13 @@ async def get_users_statistics(db: AsyncSession) -> dict:
     )
     new_month = month_result.scalar()
 
+    blocked_result = await db.execute(select(func.count(User.id)).where(User.status == UserStatus.BLOCKED.value))
+    blocked_users = blocked_result.scalar() or 0
+
     return {
         'total_users': total_users,
         'active_users': active_users,
-        'blocked_users': total_users - active_users,
+        'blocked_users': blocked_users,
         'new_today': new_today,
         'new_week': new_week,
         'new_month': new_month,

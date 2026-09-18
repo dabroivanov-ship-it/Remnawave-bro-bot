@@ -548,6 +548,7 @@ async def list_users(
     - **search**: Search by telegram_id, username, first_name, last_name
     - **email**: Search by email
     - **status**: Filter by user status (active, blocked, deleted)
+    - **subscription_status**: paid, trial, expired, none, or a raw Subscription.status
     - **sort_by**: Sort field (created_at, balance, traffic, last_activity, total_spent, purchase_count)
     """
     # Convert status enum to model enum
