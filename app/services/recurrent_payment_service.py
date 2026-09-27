@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.database.database import AsyncSessionLocal
 from app.database.models import (
     Subscription,
     SubscriptionStatus,
@@ -112,25 +113,36 @@ async def process_recurrent_payments(db: AsyncSession, bot: Bot | None = None) -
         subscriptions = await _find_subscriptions_needing_topup(db)
         stats['checked'] = len(subscriptions)
 
+        # Снимаем id сразу: после ошибки flush ORM-объекты протухают.
+        pending: list[tuple[int, int]] = []
         for subscription in subscriptions:
             user = subscription.user
             if not user:
                 continue
+            pending.append((user.id, subscription.id))
 
-            guard_key = f'{user.id}_{subscription.id}'
+        for user_id, subscription_id in pending:
+            guard_key = f'{user_id}_{subscription_id}'
             if _daily_guard.is_processed(guard_key):
                 stats['already_processed'] += 1
                 continue
 
             try:
-                result = await _process_single_subscription(
-                    db,
-                    subscription,
-                    user,
-                    bot,
-                    payment_service,
-                    subscription_service,
-                )
+                # Отдельная сессия: FOR UPDATE не держит цикл мониторинга
+                # и не пересекается с вебхуком YooKassa на той же строке платежа.
+                async with AsyncSessionLocal() as sub_db:
+                    loaded = await _load_subscription_for_topup(sub_db, subscription_id)
+                    if loaded is None:
+                        continue
+                    subscription, user = loaded
+                    result = await _process_single_subscription(
+                        sub_db,
+                        subscription,
+                        user,
+                        bot,
+                        payment_service,
+                        subscription_service,
+                    )
                 if result == 'created':
                     stats['payments_created'] += 1
                     _daily_guard.mark_processed(guard_key)
@@ -146,8 +158,8 @@ async def process_recurrent_payments(db: AsyncSession, bot: Bot | None = None) -
                 stats['errors'] += 1
                 logger.error(
                     'Ошибка обработки рекуррентного платежа',
-                    subscription_id=subscription.id,
-                    user_id=user.id,
+                    subscription_id=subscription_id,
+                    user_id=user_id,
                     error=e,
                     exc_info=True,
                 )
@@ -200,6 +212,33 @@ async def _find_subscriptions_needing_topup(db: AsyncSession) -> list:
     return list(result.scalars().all())
 
 
+async def _load_subscription_for_topup(
+    db: AsyncSession, subscription_id: int
+) -> tuple[Subscription, User] | None:
+    result = await db.execute(
+        select(Subscription)
+        .options(
+            selectinload(Subscription.user).options(
+                selectinload(User.promo_group),
+                selectinload(User.user_promo_groups).selectinload(UserPromoGroup.promo_group),
+            ),
+            selectinload(Subscription.tariff),
+        )
+        .where(Subscription.id == subscription_id)
+    )
+    subscription = result.scalar_one_or_none()
+    if subscription is None or subscription.user is None:
+        return None
+    return subscription, subscription.user
+
+
+async def _rollback_quietly(db: AsyncSession) -> None:
+    try:
+        await db.rollback()
+    except Exception:
+        pass
+
+
 async def _process_single_subscription(
     db: AsyncSession,
     subscription: Subscription,
@@ -219,6 +258,11 @@ async def _process_single_subscription(
     """
     from app.database.crud.saved_payment_method import get_active_payment_methods_by_user
 
+    user_id = user.id
+    subscription_id = subscription.id
+    telegram_id = user.telegram_id
+    language = user.language
+
     # Рассчитываем стоимость продления
     tariff = getattr(subscription, 'tariff', None)
     if tariff:
@@ -231,7 +275,7 @@ async def _process_single_subscription(
         from app.services.pricing_engine import pricing_engine
 
         # TOCTOU: lock user row before pricing to prevent concurrent promo/balance races
-        user = await lock_user_for_pricing(db, user.id)
+        user = await lock_user_for_pricing(db, user_id)
 
         pricing = await pricing_engine.calculate_renewal_price(
             db,
@@ -240,11 +284,15 @@ async def _process_single_subscription(
             user=user,
         )
         renewal_cost = pricing.final_total
+        # Сразу отпускаем FOR UPDATE — иначе вебхук YooKassa и INSERT платежа
+        # ждут друг друга и ловят deadlock.
+        await db.commit()
     except Exception as e:
+        await _rollback_quietly(db)
         logger.error(
             'Ошибка расчёта стоимости для рекуррентного платежа',
-            subscription_id=subscription.id,
-            user_id=user.id,
+            subscription_id=subscription_id,
+            user_id=user_id,
             error=e,
         )
         return 'skipped'
@@ -265,7 +313,7 @@ async def _process_single_subscription(
         return 'skipped'
 
     # Нужно пополнить баланс — ищем сохранённую карту
-    saved_methods = await get_active_payment_methods_by_user(db, user.id)
+    saved_methods = await get_active_payment_methods_by_user(db, user_id)
     if not saved_methods:
         return 'no_card'
 
@@ -281,13 +329,13 @@ async def _process_single_subscription(
         return 'skipped'
 
     description = settings.get_balance_payment_description(
-        topup_amount_kopeks, telegram_user_id=user.telegram_id, user_db_id=user.id
+        topup_amount_kopeks, telegram_user_id=telegram_id, user_db_id=user_id
     )
     metadata = {
-        'user_id': str(user.id),
-        'user_telegram_id': str(user.telegram_id) if user.telegram_id else '',
+        'user_id': str(user_id),
+        'user_telegram_id': str(telegram_id) if telegram_id else '',
         'purpose': 'recurrent_topup',
-        'subscription_id': str(subscription.id),
+        'subscription_id': str(subscription_id),
         'source': 'recurrent_payment_service',
     }
 
@@ -357,17 +405,23 @@ async def _process_single_subscription(
                     yookassa_payment_id=result['id'],
                 )
         except Exception as e:
-            logger.warning('Ошибка создания локальной записи рекуррентного платежа', error=e)
+            await _rollback_quietly(db)
+            logger.warning(
+                'Ошибка создания локальной записи рекуррентного платежа',
+                user_id=user_id,
+                subscription_id=subscription_id,
+                error=e,
+            )
 
         # Уведомляем пользователя
-        if bot and user.telegram_id:
+        if bot and telegram_id:
             try:
                 from app.localization.texts import get_texts
 
-                texts = get_texts(user.language)
+                texts = get_texts(language)
                 payment_status = result.get('status', '')
                 if result.get('paid'):
-                    keyboard = _build_extend_keyboard(texts, subscription.id)
+                    keyboard = _build_extend_keyboard(texts, subscription_id)
                     msg = texts.t(
                         'RECURRENT_TOPUP_SUCCESS',
                         '✅ <b>Автоплатёж выполнен</b>\n\nБаланс пополнен на {amount} для продления подписки.',
@@ -375,7 +429,7 @@ async def _process_single_subscription(
                     if settings.is_multi_tariff_enabled() and hasattr(subscription, 'tariff') and subscription.tariff:
                         msg += f'\n📦 Тариф: «{subscription.tariff.name}»'
                     await bot.send_message(
-                        chat_id=user.telegram_id,
+                        chat_id=telegram_id,
                         text=msg,
                         parse_mode='HTML',
                         reply_markup=keyboard,
@@ -383,7 +437,7 @@ async def _process_single_subscription(
                 elif payment_status == 'pending':
                     logger.info(
                         'Рекуррентный платёж в обработке',
-                        user_id=user.id,
+                        user_id=user_id,
                         yookassa_payment_id=result.get('id'),
                     )
             except Exception as notify_error:
@@ -392,12 +446,12 @@ async def _process_single_subscription(
         return 'created'
 
     # Все карты не сработали — уведомляем пользователя
-    if bot and user.telegram_id:
+    if bot and telegram_id:
         try:
             from app.localization.texts import get_texts
 
-            texts = get_texts(user.language)
-            keyboard = _build_extend_keyboard(texts, subscription.id)
+            texts = get_texts(language)
+            keyboard = _build_extend_keyboard(texts, subscription_id)
             msg = texts.t(
                 'RECURRENT_TOPUP_FAILED',
                 '❌ <b>Автоплатёж не удался</b>\n\nНе удалось списать {amount} ни с одной сохранённой карты для продления подписки.\n\nПополните баланс вручную, чтобы подписка не прервалась.',
@@ -405,7 +459,7 @@ async def _process_single_subscription(
             if settings.is_multi_tariff_enabled() and hasattr(subscription, 'tariff') and subscription.tariff:
                 msg += f'\n📦 Тариф: «{subscription.tariff.name}»'
             await bot.send_message(
-                chat_id=user.telegram_id,
+                chat_id=telegram_id,
                 text=msg,
                 parse_mode='HTML',
                 reply_markup=keyboard,

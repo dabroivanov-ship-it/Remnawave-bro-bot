@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import and_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,6 +10,12 @@ from app.database.models import YooKassaPayment
 
 
 logger = structlog.get_logger(__name__)
+
+
+def _is_deadlock_error(exc: BaseException) -> bool:
+    orig = getattr(exc, 'orig', exc)
+    text = f'{type(orig).__name__} {orig}'.lower()
+    return 'deadlock' in text or 'serialization failure' in text
 
 
 async def create_yookassa_payment(
@@ -26,61 +32,93 @@ async def create_yookassa_payment(
     yookassa_created_at: datetime | None = None,
     test_mode: bool = False,
 ) -> YooKassaPayment | None:
-    existing = await get_yookassa_payment_by_id(db, yookassa_payment_id)
-    if existing:
-        logger.info(
-            'Платёж YooKassa уже существует, возвращаем существующую запись',
+    payment: YooKassaPayment | None = None
+    for attempt in range(2):
+        existing = await get_yookassa_payment_by_id(db, yookassa_payment_id)
+        if existing:
+            logger.info(
+                'Платёж YooKassa уже существует, возвращаем существующую запись',
+                yookassa_payment_id=yookassa_payment_id,
+                user_id=existing.user_id,
+            )
+            return existing
+
+        payment = YooKassaPayment(
+            user_id=user_id,
             yookassa_payment_id=yookassa_payment_id,
-            user_id=existing.user_id,
+            amount_kopeks=amount_kopeks,
+            currency=currency,
+            description=description,
+            status=status,
+            confirmation_url=confirmation_url,
+            metadata_json=metadata_json,
+            payment_method_type=payment_method_type,
+            yookassa_created_at=yookassa_created_at,
+            test_mode=test_mode,
         )
-        return existing
 
-    payment = YooKassaPayment(
-        user_id=user_id,
-        yookassa_payment_id=yookassa_payment_id,
-        amount_kopeks=amount_kopeks,
-        currency=currency,
-        description=description,
-        status=status,
-        confirmation_url=confirmation_url,
-        metadata_json=metadata_json,
-        payment_method_type=payment_method_type,
-        yookassa_created_at=yookassa_created_at,
-        test_mode=test_mode,
-    )
+        db.add(payment)
+        try:
+            await db.commit()
+            break
+        except IntegrityError as e:
+            await db.rollback()
+            err_str = str(getattr(e, 'orig', e))
 
-    db.add(payment)
-    try:
-        await db.commit()
-    except IntegrityError as e:
-        await db.rollback()
-        err_str = str(getattr(e, 'orig', e))
+            if 'yookassa_payment_id' in err_str:
+                duplicate = await get_yookassa_payment_by_id(db, yookassa_payment_id)
+                if duplicate:
+                    logger.info(
+                        'Платёж YooKassa уже создан (race), возвращаем существующую запись',
+                        yookassa_payment_id=yookassa_payment_id,
+                        user_id=duplicate.user_id,
+                    )
+                    return duplicate
 
-        if 'yookassa_payment_id' in err_str:
-            duplicate = await get_yookassa_payment_by_id(db, yookassa_payment_id)
-            if duplicate:
-                logger.info(
-                    'Платёж YooKassa уже создан (race), возвращаем существующую запись',
+            if 'user_id' in err_str and ('ForeignKey' in err_str or 'foreign key' in err_str.lower()):
+                logger.error(
+                    'FK violation при создании платежа YooKassa: user_id не существует в БД',
                     yookassa_payment_id=yookassa_payment_id,
-                    user_id=duplicate.user_id,
+                    user_id=user_id,
+                    e=e,
                 )
-                return duplicate
+                return None
 
-        if 'user_id' in err_str and ('ForeignKey' in err_str or 'foreign key' in err_str.lower()):
             logger.error(
-                'FK violation при создании платежа YooKassa: user_id не существует в БД',
+                'IntegrityError при создании платежа YooKassa',
                 yookassa_payment_id=yookassa_payment_id,
                 user_id=user_id,
                 e=e,
             )
             return None
+        except (OperationalError, DBAPIError) as e:
+            await db.rollback()
+            duplicate = await get_yookassa_payment_by_id(db, yookassa_payment_id)
+            if duplicate:
+                logger.info(
+                    'Платёж YooKassa уже создан после конфликта записи, возвращаем существующую запись',
+                    yookassa_payment_id=yookassa_payment_id,
+                    user_id=duplicate.user_id,
+                )
+                return duplicate
+            if _is_deadlock_error(e) and attempt == 0:
+                logger.warning(
+                    'Deadlock при создании платежа YooKassa, повтор',
+                    yookassa_payment_id=yookassa_payment_id,
+                    user_id=user_id,
+                )
+                continue
+            logger.error(
+                'Ошибка БД при создании платежа YooKassa',
+                yookassa_payment_id=yookassa_payment_id,
+                user_id=user_id,
+                e=e,
+            )
+            return None
+    else:
+        return None
 
-        logger.error(
-            'IntegrityError при создании платежа YooKassa',
-            yookassa_payment_id=yookassa_payment_id,
-            user_id=user_id,
-            e=e,
-        )
+    if payment is None:
         return None
     await db.refresh(payment)
 

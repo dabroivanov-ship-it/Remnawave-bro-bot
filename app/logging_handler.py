@@ -157,6 +157,11 @@ class TelegramNotifierProcessor:
                         event_dict['exc_info'] = (type(candidate), candidate, candidate.__traceback__)
                         break
 
+        resolved_exc = event_dict.get('exc_info')
+        has_exception = isinstance(resolved_exc, tuple) and resolved_exc[1] is not None
+        if not event_msg.strip() and not has_exception:
+            return event_dict
+
         # 5. Bot not initialized yet — skip
         bot = self._bot
         if bot is None:
