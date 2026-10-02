@@ -369,6 +369,20 @@ class TicketCRUD:
         result = await db.execute(query)
         return len(result.scalars().all())
 
+    @staticmethod
+    async def delete_ticket(db: AsyncSession, ticket_id: int) -> bool:
+        exists = await db.execute(select(Ticket.id).where(Ticket.id == ticket_id))
+        if exists.scalar_one_or_none() is None:
+            return False
+        await db.execute(
+            update(SupportAuditLog).where(SupportAuditLog.ticket_id == ticket_id).values(ticket_id=None)
+        )
+        await db.execute(delete(TicketNotification).where(TicketNotification.ticket_id == ticket_id))
+        await db.execute(delete(TicketMessage).where(TicketMessage.ticket_id == ticket_id))
+        await db.execute(delete(Ticket).where(Ticket.id == ticket_id))
+        await db.commit()
+        return True
+
 
 class TicketMessageCRUD:
     """CRUD операции для работы с сообщениями тикетов"""
@@ -488,14 +502,3 @@ class TicketMessageCRUD:
 
         result = await db.execute(query)
         return result.scalar_one_or_none()
-
-    @staticmethod
-    async def delete_ticket(db: AsyncSession, ticket_id: int) -> bool:
-        exists = await db.execute(select(Ticket.id).where(Ticket.id == ticket_id))
-        if exists.scalar_one_or_none() is None:
-            return False
-        await db.execute(delete(TicketNotification).where(TicketNotification.ticket_id == ticket_id))
-        await db.execute(delete(TicketMessage).where(TicketMessage.ticket_id == ticket_id))
-        await db.execute(delete(Ticket).where(Ticket.id == ticket_id))
-        await db.commit()
-        return True
