@@ -4,7 +4,7 @@ import math
 from datetime import UTC, datetime
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -656,3 +656,4 @@ async def delete_ticket(
             status_code=status.HTTP_404_NOT_FOUND,
             detail='Ticket not found',
         )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

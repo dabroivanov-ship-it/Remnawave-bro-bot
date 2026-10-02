@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy import and_, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.database.models import SupportAuditLog, Ticket, TicketMessage, TicketStatus
+from app.database.models import SupportAuditLog, Ticket, TicketMessage, TicketNotification, TicketStatus
 
 
 logger = structlog.get_logger(__name__)
@@ -491,9 +491,11 @@ class TicketMessageCRUD:
 
     @staticmethod
     async def delete_ticket(db: AsyncSession, ticket_id: int) -> bool:
-        ticket = await TicketCRUD.get_ticket_by_id(db, ticket_id, load_messages=True)
-        if not ticket:
+        exists = await db.execute(select(Ticket.id).where(Ticket.id == ticket_id))
+        if exists.scalar_one_or_none() is None:
             return False
-        await db.delete(ticket)
+        await db.execute(delete(TicketNotification).where(TicketNotification.ticket_id == ticket_id))
+        await db.execute(delete(TicketMessage).where(TicketMessage.ticket_id == ticket_id))
+        await db.execute(delete(Ticket).where(Ticket.id == ticket_id))
         await db.commit()
         return True

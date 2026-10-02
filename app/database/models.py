@@ -2845,7 +2845,18 @@ class Ticket(Base):
 
     # Связи
     user = relationship('User', backref='tickets')
-    messages = relationship('TicketMessage', back_populates='ticket', cascade='all, delete-orphan')
+    messages = relationship(
+        'TicketMessage',
+        back_populates='ticket',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    notifications = relationship(
+        'TicketNotification',
+        back_populates='ticket',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
 
     @property
     def is_open(self) -> bool:
@@ -3279,7 +3290,7 @@ class TicketNotification(Base):
     created_at = Column(AwareDateTime(), default=func.now())
     read_at = Column(AwareDateTime(), nullable=True)
 
-    ticket = relationship('Ticket', backref='notifications')
+    ticket = relationship('Ticket', back_populates='notifications')
     user = relationship('User', backref='ticket_notifications')
 
     def __repr__(self) -> str:
