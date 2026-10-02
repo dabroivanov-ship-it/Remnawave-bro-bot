@@ -1203,52 +1203,6 @@ class RemnaWaveAPI:
             logger.warning('Failed to get nodes metrics for realtime usage', error=e)
             return []
 
-    # ============== Infra Billing API ==============
-
-    async def get_infra_providers(self) -> list[dict[str, Any]]:
-        response = await self._make_request('GET', '/api/infra-billing/providers')
-        payload = response.get('response', response)
-        if isinstance(payload, dict):
-            providers = payload.get('providers') or []
-            return providers if isinstance(providers, list) else []
-        return payload if isinstance(payload, list) else []
-
-    async def get_infra_billing_nodes(self) -> list[dict[str, Any]]:
-        response = await self._make_request('GET', '/api/infra-billing/nodes')
-        payload = response.get('response', response)
-        if isinstance(payload, dict):
-            nodes = payload.get('billingNodes') or []
-            return nodes if isinstance(nodes, list) else []
-        return payload if isinstance(payload, list) else []
-
-    async def get_infra_billing_history(self, *, start: int = 0, size: int = 100) -> list[dict[str, Any]]:
-        response = await self._make_request(
-            'GET',
-            '/api/infra-billing/history',
-            params={'start': start, 'size': size},
-        )
-        payload = response.get('response', response)
-        if isinstance(payload, dict):
-            records = payload.get('records') or []
-            return records if isinstance(records, list) else []
-        return payload if isinstance(payload, list) else []
-
-    async def get_all_infra_billing_history(self, *, page_size: int = 100, max_pages: int = 50) -> list[dict[str, Any]]:
-        all_records: list[dict[str, Any]] = []
-        start = 0
-        for _ in range(max_pages):
-            batch = await self.get_infra_billing_history(start=start, size=page_size)
-            if not batch:
-                break
-            all_records.extend(batch)
-            if len(batch) < page_size:
-                break
-            start += page_size
-        return all_records
-
-    async def get_user_stats_usage(self, user_id: int | str, start_date: str, end_date: str) -> dict[str, Any]:
-        return await self.get_bandwidth_stats_user(user_id, start_date, end_date)
-
     # ============== Bandwidth Stats API ==============
 
     async def get_bandwidth_stats_nodes(self, start_date: str, end_date: str) -> dict[str, Any]:

@@ -641,3 +641,18 @@ async def update_ticket_priority(
         user=user_info,
         messages=messages_response,
     )
+
+
+@router.delete('/{ticket_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ticket(
+    ticket_id: int,
+    admin: User = Depends(require_permission('tickets:delete')),
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Delete a ticket and its messages."""
+    deleted = await TicketCRUD.delete_ticket(db, ticket_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Ticket not found',
+        )

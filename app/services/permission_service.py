@@ -50,7 +50,7 @@ PERMISSION_REGISTRY: dict[str, list[str]] = {
         'send_offer',
         'referral',
     ],
-    'tickets': ['read', 'reply', 'close', 'settings'],
+    'tickets': ['read', 'reply', 'close', 'delete', 'settings'],
     'stats': ['read', 'export'],
     'sales_stats': ['read', 'export'],
     'broadcasts': ['read', 'create', 'edit', 'delete', 'send'],
@@ -82,7 +82,6 @@ PERMISSION_REGISTRY: dict[str, list[str]] = {
     'info_pages': ['read', 'create', 'edit', 'delete'],
     'guides': ['read', 'create', 'edit', 'delete'],
     'news': ['read', 'create', 'edit', 'delete'],
-    'infra_billing': ['read', 'create', 'edit', 'delete', 'sync'],
 }
 
 

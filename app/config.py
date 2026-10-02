@@ -61,7 +61,6 @@ class Settings(BaseSettings):
     ADMIN_NOTIFICATIONS_BALANCE_TOPIC_ID: int | None = None  # Пополнение баланса
     ADMIN_NOTIFICATIONS_ADDONS_TOPIC_ID: int | None = None  # Докупка трафика/устройств/серверов
     ADMIN_NOTIFICATIONS_INFRASTRUCTURE_TOPIC_ID: int | None = None  # Ноды, техработы, статус панели
-    ADMIN_NOTIFICATIONS_INFRA_BILLING_TOPIC_ID: int | None = None  # Оплаты серверов Remnawave
     ADMIN_NOTIFICATIONS_ERRORS_TOPIC_ID: int | None = None  # Ошибки бота
     ADMIN_NOTIFICATIONS_PROMO_TOPIC_ID: int | None = None  # Промокоды, кампании, промогруппы
     ADMIN_NOTIFICATIONS_PARTNERS_TOPIC_ID: int | None = None  # Партнёрки, выводы, админ-действия
@@ -74,7 +73,6 @@ class Settings(BaseSettings):
     ADMIN_NOTIFICATIONS_BALANCE_ENABLED: bool = True
     ADMIN_NOTIFICATIONS_ADDONS_ENABLED: bool = True
     ADMIN_NOTIFICATIONS_INFRASTRUCTURE_ENABLED: bool = True
-    ADMIN_NOTIFICATIONS_INFRA_BILLING_ENABLED: bool = True
     ADMIN_NOTIFICATIONS_ERRORS_ENABLED: bool = True
     ADMIN_NOTIFICATIONS_PROMO_ENABLED: bool = True
     ADMIN_NOTIFICATIONS_PARTNERS_ENABLED: bool = True
@@ -153,10 +151,6 @@ class Settings(BaseSettings):
     WEBHOOK_NOTIFY_BANDWIDTH_THRESHOLD: bool = True
     WEBHOOK_NOTIFY_DEVICES: bool = True
     WEBHOOK_NOTIFY_TORRENT_DETECTED: bool = True
-    WEBHOOK_NOTIFY_INFRA_BILLING: bool = True
-    # Топик для биллинга Remnawave (рядом с WEBHOOK_NOTIFY_INFRA_BILLING в админке).
-    # Если пусто — ADMIN_NOTIFICATIONS_INFRA_BILLING_TOPIC_ID → общий TOPIC_ID → корень чата.
-    WEBHOOK_NOTIFY_INFRA_BILLING_TOPIC_ID: int | None = None
 
     TRIAL_DURATION_DAYS: int = 3
     TRIAL_TRAFFIC_LIMIT_GB: int = 10

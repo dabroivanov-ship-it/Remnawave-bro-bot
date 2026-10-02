@@ -18,6 +18,7 @@ class TransactionResponse(BaseModel):
 
     id: int
     type: str
+    category: str = 'other'
     amount_kopeks: int
     amount_rubles: float
     description: str | None = None

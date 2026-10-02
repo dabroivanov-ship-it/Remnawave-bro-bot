@@ -230,8 +230,6 @@ class BotConfigurationService:
         'DEFAULT_LANGUAGE': 'LOCALIZATION',
         'AVAILABLE_LANGUAGES': 'LOCALIZATION',
         'REMNAWAVE_WEBHOOK_NOTIFY_NODE_CONNECTION_STATUS': 'ADMIN_NOTIFICATIONS',
-        'WEBHOOK_NOTIFY_INFRA_BILLING': 'ADMIN_NOTIFICATIONS',
-        'WEBHOOK_NOTIFY_INFRA_BILLING_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
         'LANGUAGE_SELECTION_ENABLED': 'LOCALIZATION',
         'DEFAULT_DEVICE_LIMIT': 'SUBSCRIPTIONS_CORE',
         'DEFAULT_TRAFFIC_LIMIT_GB': 'SUBSCRIPTIONS_CORE',
@@ -282,8 +280,6 @@ class BotConfigurationService:
         'ADMIN_NOTIFICATIONS_BALANCE_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
         'ADMIN_NOTIFICATIONS_ADDONS_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
         'ADMIN_NOTIFICATIONS_INFRASTRUCTURE_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
-        'ADMIN_NOTIFICATIONS_INFRA_BILLING_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
-        'ADMIN_NOTIFICATIONS_INFRA_BILLING_ENABLED': 'ADMIN_NOTIFICATIONS',
         'ADMIN_NOTIFICATIONS_ERRORS_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
         'ADMIN_NOTIFICATIONS_PROMO_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
         'ADMIN_NOTIFICATIONS_PARTNERS_TOPIC_ID': 'ADMIN_NOTIFICATIONS',
@@ -692,22 +688,6 @@ class BotConfigurationService:
             'example': 'true',
             'dependencies': 'ADMIN_NOTIFICATIONS_ENABLED',
         },
-        'ADMIN_NOTIFICATIONS_INFRA_BILLING_TOPIC_ID': {
-            'description': (
-                'ID отдельного топика для уведомлений о биллинге Remnawave '
-                '(скоро оплата, просрочка, факт оплаты). '
-                'Если пусто — используется общий топик уведомлений.'
-            ),
-            'format': 'Числовой message_thread_id топика или пусто.',
-            'example': '15',
-            'dependencies': 'ADMIN_NOTIFICATIONS_ENABLED, ADMIN_NOTIFICATIONS_CHAT_ID, WEBHOOK_NOTIFY_INFRA_BILLING',
-        },
-        'ADMIN_NOTIFICATIONS_INFRA_BILLING_ENABLED': {
-            'description': 'Включает отправку уведомлений о биллинге Remnawave в админ-чат.',
-            'format': 'Булево значение.',
-            'example': 'true',
-            'dependencies': 'ADMIN_NOTIFICATIONS_ENABLED, WEBHOOK_NOTIFY_INFRA_BILLING',
-        },
         'MULTI_TARIFF_ENABLED': {
             'description': (
                 'Разрешает пользователям покупать несколько тарифов одновременно. '
@@ -1069,29 +1049,6 @@ class BotConfigurationService:
                 'Остальные инфраструктурные уведомления продолжают отправляться.'
             ),
             'dependencies': 'REMNAWAVE_WEBHOOK_ENABLED, ADMIN_NOTIFICATIONS_ENABLED',
-        },
-        'WEBHOOK_NOTIFY_INFRA_BILLING': {
-            'description': (
-                'Уведомления в админ-группу о биллинге Remnawave: '
-                'предупреждения за 3 / 2 / 1 день до оплаты, в день оплаты, просрочка '
-                'и факт оплаты (проверка по датам, webhook CRM и отметка «Оплачено»). '
-                'Топик: WEBHOOK_NOTIFY_INFRA_BILLING_TOPIC_ID '
-                '(пусто — общий топик / корень чата).'
-            ),
-            'format': 'Булево значение.',
-            'example': 'true',
-            'dependencies': 'ADMIN_NOTIFICATIONS_ENABLED, ADMIN_NOTIFICATIONS_INFRA_BILLING_ENABLED',
-        },
-        'WEBHOOK_NOTIFY_INFRA_BILLING_TOPIC_ID': {
-            'description': (
-                'ID топика Telegram для уведомлений о биллинге Remnawave '
-                '(сроки оплаты, просрочка, факт оплаты). '
-                'Если пусто — используется ADMIN_NOTIFICATIONS_INFRA_BILLING_TOPIC_ID, '
-                'затем общий ADMIN_NOTIFICATIONS_TOPIC_ID, иначе корень чата.'
-            ),
-            'format': 'Числовой message_thread_id топика или пусто.',
-            'example': '15',
-            'dependencies': 'ADMIN_NOTIFICATIONS_ENABLED, ADMIN_NOTIFICATIONS_CHAT_ID, WEBHOOK_NOTIFY_INFRA_BILLING',
         },
         'WEBHOOK_NOTIFY_USER_ENABLED': {
             'description': (

@@ -488,3 +488,12 @@ class TicketMessageCRUD:
 
         result = await db.execute(query)
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def delete_ticket(db: AsyncSession, ticket_id: int) -> bool:
+        ticket = await TicketCRUD.get_ticket_by_id(db, ticket_id, load_messages=True)
+        if not ticket:
+            return False
+        await db.delete(ticket)
+        await db.commit()
+        return True

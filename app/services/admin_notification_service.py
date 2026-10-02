@@ -36,7 +36,6 @@ class NotificationCategory(StrEnum):
     BALANCE = 'balance'  # Пополнение баланса
     ADDONS = 'addons'  # Докупка трафика/устройств/серверов
     INFRASTRUCTURE = 'infrastructure'  # Ноды, техработы, статус панели, вебхуки
-    INFRA_BILLING = 'infra_billing'  # Оплаты серверов Remnawave (CRM billing)
     ERRORS = 'errors'  # Ошибки бота, краши
     PROMO = 'promo'  # Промокоды, кампании, промогруппы
     PARTNERS = 'partners'  # Партнёрки, выводы, админ-действия
@@ -63,10 +62,6 @@ class AdminNotificationService:
             NotificationCategory.BALANCE: getattr(settings, 'ADMIN_NOTIFICATIONS_BALANCE_TOPIC_ID', None),
             NotificationCategory.ADDONS: getattr(settings, 'ADMIN_NOTIFICATIONS_ADDONS_TOPIC_ID', None),
             NotificationCategory.INFRASTRUCTURE: getattr(settings, 'ADMIN_NOTIFICATIONS_INFRASTRUCTURE_TOPIC_ID', None),
-            NotificationCategory.INFRA_BILLING: (
-                getattr(settings, 'WEBHOOK_NOTIFY_INFRA_BILLING_TOPIC_ID', None)
-                or getattr(settings, 'ADMIN_NOTIFICATIONS_INFRA_BILLING_TOPIC_ID', None)
-            ),
             NotificationCategory.ERRORS: getattr(settings, 'ADMIN_NOTIFICATIONS_ERRORS_TOPIC_ID', None),
             NotificationCategory.PROMO: getattr(settings, 'ADMIN_NOTIFICATIONS_PROMO_TOPIC_ID', None),
             NotificationCategory.PARTNERS: getattr(settings, 'ADMIN_NOTIFICATIONS_PARTNERS_TOPIC_ID', None),
@@ -1454,14 +1449,6 @@ class AdminNotificationService:
         if not self._is_enabled():
             return False
         return await self._send_message(text, category=category)
-
-    async def send_infra_billing_notification(self, text: str) -> bool:
-        """Send infra billing alert (Remnawave server payments) to admin chat."""
-        from app.config import settings
-
-        if not self._is_enabled() or not settings.WEBHOOK_NOTIFY_INFRA_BILLING:
-            return False
-        return await self._send_message(text, category=NotificationCategory.INFRA_BILLING)
 
     def _get_payment_method_display(self, payment_method: str | None) -> str:
         if not payment_method:

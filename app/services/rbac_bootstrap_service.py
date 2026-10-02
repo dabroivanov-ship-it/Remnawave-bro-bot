@@ -75,7 +75,6 @@ _PRESET_ROLES: list[dict] = [
             'info_pages:*',
             'guides:*',
             'news:*',
-            'infra_billing:*',
         ],
         'color': '#F59E0B',
         'icon': 'crown',

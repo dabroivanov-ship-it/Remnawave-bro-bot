@@ -109,18 +109,6 @@ _ADMIN_SERVICE_EVENTS: dict[str, str] = {
     'service.subpage_config_changed': '📄 Конфиг страницы подписки изменён',
 }
 
-_ADMIN_CRM_EVENTS: dict[str, str] = {
-    'crm.infra_billing_node_payment_in_7_days': '💳 Оплата ноды через 7 дней',
-    'crm.infra_billing_node_payment_in_48hrs': '💳 Оплата ноды через 48 часов',
-    'crm.infra_billing_node_payment_in_24hrs': '⚠️ Оплата ноды через 24 часа',
-    'crm.infra_billing_node_payment_due_today': '🔴 Оплата ноды сегодня',
-    'crm.infra_billing_node_payment_overdue_24hrs': '❗ Просрочка оплаты ноды: 24 часа',
-    'crm.infra_billing_node_payment_overdue_48hrs': '❗ Просрочка оплаты ноды: 48 часов',
-    'crm.infra_billing_node_payment_overdue_7_days': '🚨 Просрочка оплаты ноды: 7 дней',
-    'crm.infra_billing_node_payment_completed': '✅ Оплата ноды выполнена',
-    'crm.infra_billing_node_payment_paid': '✅ Оплата ноды выполнена',
-}
-
 _ADMIN_ERROR_EVENTS: dict[str, str] = {
     'errors.bandwidth_usage_threshold_reached_max_notifications': '⚠️ Достигнут лимит уведомлений о трафике',
 }
@@ -175,7 +163,6 @@ class RemnaWaveWebhookService:
         self._admin_handlers: dict[str, str] = {
             **_ADMIN_NODE_EVENTS,
             **_ADMIN_SERVICE_EVENTS,
-            **_ADMIN_CRM_EVENTS,
             **_ADMIN_ERROR_EVENTS,
             **_ADMIN_TORRENT_BLOCKER_EVENTS,
         }
@@ -286,6 +273,9 @@ class RemnaWaveWebhookService:
         Returns True if the event was processed, False if skipped/unknown.
         db may be None for admin events that don't require database access.
         """
+        if event_name.startswith('crm.infra_billing'):
+            return True
+
         # Check if event has both admin and user handlers (e.g. torrent_blocker.report)
         user_handler = self._user_handlers.get(event_name)
         if event_name in self._admin_handlers and user_handler:
@@ -348,17 +338,6 @@ class RemnaWaveWebhookService:
 
     async def _process_admin_event(self, event_name: str, data: dict) -> bool:
         """Format and send admin notification for infrastructure events."""
-        if event_name.startswith('crm.infra_billing'):
-            try:
-                from app.database.database import AsyncSessionLocal
-                from app.services.infra_billing_webhook_service import InfraBillingWebhookService
-
-                async with AsyncSessionLocal() as db:
-                    await InfraBillingWebhookService().handle_event(db, event_name, data)
-                    await db.commit()
-            except Exception:
-                logger.exception('Failed to persist infra billing webhook event', event_name=event_name)
-
         # Invalidate subscription page config cache on subpage config changes
         if event_name == 'service.subpage_config_changed':
             try:
@@ -376,10 +355,6 @@ class RemnaWaveWebhookService:
 
         if event_name in _ADMIN_NODE_CONNECTION_EVENTS and not settings.REMNAWAVE_WEBHOOK_NOTIFY_NODE_CONNECTION_STATUS:
             logger.debug('RemnaWave node connection notifications disabled, skipping event', event_name=event_name)
-            return True
-
-        if event_name.startswith('crm.infra_billing') and not settings.WEBHOOK_NOTIFY_INFRA_BILLING:
-            logger.debug('Infra billing admin notifications disabled, skipping event', event_name=event_name)
             return True
 
         if not self._admin_service.is_enabled:
@@ -407,23 +382,6 @@ class RemnaWaveWebhookService:
         version = html.escape(data.get('version') or data.get('panelVersion') or '')
         if version:
             lines.append(f'Версия: <code>{version}</code>')
-
-        # CRM billing fields
-        provider_name = html.escape(data.get('providerName') or '')
-        if provider_name:
-            lines.append(f'Провайдер: <code>{provider_name}</code>')
-
-        amount = html.escape(str(data.get('amount') or data.get('price') or ''))
-        if amount:
-            lines.append(f'Сумма: <code>{amount}</code>')
-
-        due_date = html.escape(data.get('dueDate') or data.get('paymentDate') or data.get('nextBillingAt') or '')
-        if due_date:
-            lines.append(f'Дата: <code>{due_date}</code>')
-
-        login_url = data.get('loginUrl') or ''
-        if login_url and self._is_valid_url(login_url):
-            lines.append(f'Панель: {html.escape(login_url)}')
 
         # Login attempt fields
         login_data = data.get('loginAttempt')
@@ -481,12 +439,9 @@ class RemnaWaveWebhookService:
         try:
             from app.services.admin_notification_service import NotificationCategory
 
-            category = (
-                NotificationCategory.INFRA_BILLING
-                if event_name.startswith('crm.infra_billing')
-                else NotificationCategory.INFRASTRUCTURE
+            await self._admin_service.send_webhook_notification(
+                '\n'.join(lines), category=NotificationCategory.INFRASTRUCTURE
             )
-            await self._admin_service.send_webhook_notification('\n'.join(lines), category=category)
             return True
         except Exception:
             logger.exception('Failed to send admin notification for event', event_name=event_name)

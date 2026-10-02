@@ -55,6 +55,41 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix='/balance', tags=['Cabinet Balance'])
 
+_INCOME_TYPES = frozenset({'deposit', 'referral_reward', 'refund', 'poll_reward'})
+_EXPENSE_TYPES = frozenset({'subscription_payment', 'withdrawal', 'gift_payment', 'router_order'})
+
+
+def _transaction_category(tx_type: str | None, description: str | None) -> str:
+    kind = (tx_type or '').lower()
+    desc = (description or '').lower()
+    if kind == 'deposit':
+        return 'deposit'
+    if kind == 'referral_reward':
+        return 'referral_reward'
+    if kind == 'refund':
+        return 'refund'
+    if kind == 'failed_refund':
+        return 'failed_refund'
+    if kind == 'poll_reward':
+        return 'poll_reward'
+    if kind == 'gift_payment':
+        return 'gift'
+    if kind == 'router_order':
+        return 'router'
+    if kind == 'withdrawal':
+        return 'withdrawal'
+    if kind == 'subscription_payment':
+        if any(token in desc for token in ('устройств', 'device')):
+            return 'devices'
+        if any(token in desc for token in ('трафик', 'traffic', ' гб', ' gb')):
+            return 'traffic'
+        if any(token in desc for token in ('стран', 'country', 'countries', 'сервер', 'server')):
+            return 'servers'
+        if any(token in desc for token in ('переход на тариф', 'смен', 'switch tariff', 'switch to')):
+            return 'tariff_switch'
+        return 'subscription'
+    return kind or 'other'
+
 
 @router.get('', response_model=BalanceResponse)
 async def get_balance(
@@ -79,21 +114,27 @@ async def get_transactions(
     page: int = Query(1, ge=1, description='Page number'),
     per_page: int = Query(20, ge=1, le=100, description='Items per page'),
     type: str | None = Query(None, description='Filter by transaction type'),
+    direction: str | None = Query(None, description='income or expense'),
     user: User = Depends(get_current_cabinet_user),
     db: AsyncSession = Depends(get_cabinet_db),
 ):
     """Get transaction history."""
     # Base query
     query = select(Transaction).where(Transaction.user_id == user.id)
+    count_query = select(func.count()).select_from(Transaction).where(Transaction.user_id == user.id)
 
     # Filter by type
     if type:
         query = query.where(Transaction.type == type)
-
-    # Get total count
-    count_query = select(func.count()).select_from(Transaction).where(Transaction.user_id == user.id)
-    if type:
         count_query = count_query.where(Transaction.type == type)
+
+    direction_key = (direction or '').strip().lower()
+    if direction_key == 'income':
+        query = query.where(Transaction.type.in_(_INCOME_TYPES))
+        count_query = count_query.where(Transaction.type.in_(_INCOME_TYPES))
+    elif direction_key == 'expense':
+        query = query.where(Transaction.type.in_(_EXPENSE_TYPES))
+        count_query = count_query.where(Transaction.type.in_(_EXPENSE_TYPES))
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -107,16 +148,16 @@ async def get_transactions(
 
     items = []
     for t in transactions:
-        # Determine sign based on transaction type
         # Credits (positive): DEPOSIT, REFERRAL_REWARD, REFUND, POLL_REWARD
-        # Debits (negative): SUBSCRIPTION_PAYMENT, WITHDRAWAL, GIFT_PAYMENT
-        is_debit = t.type in ['subscription_payment', 'withdrawal', 'gift_payment']
+        # Debits (negative): SUBSCRIPTION_PAYMENT, WITHDRAWAL, GIFT_PAYMENT, ROUTER_ORDER
+        is_debit = t.type in _EXPENSE_TYPES
         amount_kopeks = -abs(t.amount_kopeks) if is_debit else abs(t.amount_kopeks)
 
         items.append(
             TransactionResponse(
                 id=t.id,
                 type=t.type,
+                category=_transaction_category(t.type, t.description),
                 amount_kopeks=amount_kopeks,
                 amount_rubles=amount_kopeks / 100,
                 description=t.description,

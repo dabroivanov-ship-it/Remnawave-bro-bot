@@ -18,7 +18,6 @@ from .admin_campaigns import router as admin_campaigns_router
 from .admin_channels import router as admin_channels_router
 from .admin_email_templates import router as admin_email_templates_router
 from .admin_guides import router as admin_guides_router
-from .admin_infra_billing import router as admin_infra_billing_router
 from .admin_info_pages import router as admin_info_pages_router
 from .admin_ip_control import router as admin_ip_control_router
 from .admin_landings import router as admin_landings_router
@@ -144,7 +143,6 @@ router.include_router(admin_payment_methods_router)
 router.include_router(admin_landings_router)
 router.include_router(admin_payments_router)
 router.include_router(admin_autopayments_router)
-router.include_router(admin_infra_billing_router)
 router.include_router(admin_balances_router)
 router.include_router(admin_promo_offers_router)
 router.include_router(admin_remnawave_router)

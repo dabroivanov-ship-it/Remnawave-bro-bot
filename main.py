@@ -37,7 +37,6 @@ from app.services.payment_verification_service import (
 from app.services.referral_contest_service import referral_contest_service
 from app.services.remnawave_sync_service import remnawave_sync_service
 from app.services.reporting_service import reporting_service
-from app.services.infra_billing_notify_service import infra_billing_notify_service
 from app.services.riopay_service import riopay_service
 from app.services.system_settings_service import bot_configuration_service
 from app.services.traffic_monitoring_service import traffic_monitoring_scheduler
@@ -369,22 +368,6 @@ async def main():
             except Exception as e:
                 stage.warning(f'Ошибка запуска сервиса отчетов: {e}')
                 logger.error('❌ Ошибка запуска сервиса отчетов', error=e)
-
-        async with timeline.stage(
-            'Уведомления биллинга Remnawave',
-            '💳',
-            success_message='Уведомления биллинга готовы',
-        ) as stage:
-            try:
-                infra_billing_notify_service.set_bot(bot)
-                await infra_billing_notify_service.start()
-                if infra_billing_notify_service.is_running():
-                    stage.log('Проверка сроков оплаты серверов запущена')
-                else:
-                    stage.skip('Уведомления биллинга выключены настройками')
-            except Exception as e:
-                stage.warning(f'Ошибка запуска уведомлений биллинга: {e}')
-                logger.error('❌ Ошибка запуска уведомлений биллинга Remnawave', error=e)
 
         async with timeline.stage(
             'Реферальные конкурсы',
@@ -882,12 +865,6 @@ async def main():
             await reporting_service.stop()
         except Exception as e:
             logger.error('Ошибка остановки сервиса отчетов', error=e)
-
-        logger.info('ℹ️ Остановка уведомлений биллинга Remnawave...')
-        try:
-            await infra_billing_notify_service.stop()
-        except Exception as e:
-            logger.error('Ошибка остановки уведомлений биллинга Remnawave', error=e)
 
         logger.info('ℹ️ Остановка сервиса конкурсов...')
         try:

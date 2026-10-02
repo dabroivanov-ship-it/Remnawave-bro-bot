@@ -2732,30 +2732,6 @@ class RemnaWaveService:
             logger.error('Ошибка получения актуального использования нод', error=e)
             return []
 
-    async def get_infra_providers(self) -> list[dict[str, Any]]:
-        try:
-            async with self.get_api_client() as api:
-                return await api.get_infra_providers()
-        except Exception as e:
-            logger.error('Ошибка получения infra providers из Remnawave', error=e)
-            return []
-
-    async def get_infra_billing_nodes(self) -> list[dict[str, Any]]:
-        try:
-            async with self.get_api_client() as api:
-                return await api.get_infra_billing_nodes()
-        except Exception as e:
-            logger.error('Ошибка получения infra billing nodes из Remnawave', error=e)
-            return []
-
-    async def get_infra_billing_history(self) -> list[dict[str, Any]]:
-        try:
-            async with self.get_api_client() as api:
-                return await api.get_all_infra_billing_history()
-        except Exception as e:
-            logger.error('Ошибка получения infra billing history из Remnawave', error=e)
-            return []
-
     async def get_squad_details(self, squad_uuid: str) -> dict | None:
         try:
             async with self.get_api_client() as api:
