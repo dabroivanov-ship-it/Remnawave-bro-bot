@@ -1,6 +1,7 @@
 import hashlib
 import json
 from dataclasses import dataclass
+from types import UnionType
 from typing import Any, Optional, Union, get_args, get_origin
 
 import structlog
@@ -1194,7 +1195,14 @@ class BotConfigurationService:
 
     @classmethod
     def _is_env_override(cls, key: str) -> bool:
-        return key in cls._env_override_keys
+        if key not in cls._env_override_keys:
+            return False
+        original = cls._original_values.get(key)
+        if original is None:
+            return False
+        if isinstance(original, str) and not original.strip():
+            return False
+        return True
 
     @classmethod
     def _format_numeric_with_unit(cls, key: str, value: float) -> str | None:
@@ -1368,7 +1376,7 @@ class BotConfigurationService:
             return str, True
 
         origin = get_origin(annotation)
-        if origin is Union:
+        if origin is Union or origin is UnionType:
             args = [arg for arg in get_args(annotation) if arg is not type(None)]
             if len(args) == 1:
                 nested_type, nested_optional = cls._normalize_type(args[0])
@@ -1764,7 +1772,10 @@ class BotConfigurationService:
             raise ValueError(f'Неверное булево значение: {raw_value}')
 
         if python_type is int:
-            return int(raw_value)
+            stripped = raw_value.strip()
+            if not stripped:
+                return None if definition.is_optional else 0
+            return int(stripped)
 
         if python_type is float:
             return float(raw_value)

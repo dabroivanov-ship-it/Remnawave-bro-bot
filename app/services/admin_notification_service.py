@@ -46,34 +46,56 @@ class NotificationCategory(StrEnum):
 logger = structlog.get_logger(__name__)
 
 
+def _coerce_topic_id(value: Any) -> int | None:
+    if value is None or value is False:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        topic_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return topic_id if topic_id > 0 else None
+
+
+_CATEGORY_TOPIC_KEYS: dict[NotificationCategory, str] = {
+    NotificationCategory.PURCHASES: 'ADMIN_NOTIFICATIONS_PURCHASES_TOPIC_ID',
+    NotificationCategory.RENEWALS: 'ADMIN_NOTIFICATIONS_RENEWALS_TOPIC_ID',
+    NotificationCategory.TRIALS: 'ADMIN_NOTIFICATIONS_TRIALS_TOPIC_ID',
+    NotificationCategory.BALANCE: 'ADMIN_NOTIFICATIONS_BALANCE_TOPIC_ID',
+    NotificationCategory.ADDONS: 'ADMIN_NOTIFICATIONS_ADDONS_TOPIC_ID',
+    NotificationCategory.INFRASTRUCTURE: 'ADMIN_NOTIFICATIONS_INFRASTRUCTURE_TOPIC_ID',
+    NotificationCategory.ERRORS: 'ADMIN_NOTIFICATIONS_ERRORS_TOPIC_ID',
+    NotificationCategory.PROMO: 'ADMIN_NOTIFICATIONS_PROMO_TOPIC_ID',
+    NotificationCategory.PARTNERS: 'ADMIN_NOTIFICATIONS_PARTNERS_TOPIC_ID',
+    NotificationCategory.ROUTERS: 'ADMIN_NOTIFICATIONS_ROUTERS_TOPIC_ID',
+    NotificationCategory.TICKETS: 'ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID',
+}
+
+
 class AdminNotificationService:
     def __init__(self, bot: Bot):
         self.bot = bot
-        self.chat_id = getattr(settings, 'ADMIN_NOTIFICATIONS_CHAT_ID', None)
-        self.topic_id = getattr(settings, 'ADMIN_NOTIFICATIONS_TOPIC_ID', None)
-        self.ticket_topic_id = getattr(settings, 'ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID', None)
-        self.enabled = getattr(settings, 'ADMIN_NOTIFICATIONS_ENABLED', False)
 
-        # Маппинг категорий на topic_id (None = fallback на self.topic_id)
-        self.category_topics: dict[NotificationCategory, int | None] = {
-            NotificationCategory.PURCHASES: getattr(settings, 'ADMIN_NOTIFICATIONS_PURCHASES_TOPIC_ID', None),
-            NotificationCategory.RENEWALS: getattr(settings, 'ADMIN_NOTIFICATIONS_RENEWALS_TOPIC_ID', None),
-            NotificationCategory.TRIALS: getattr(settings, 'ADMIN_NOTIFICATIONS_TRIALS_TOPIC_ID', None),
-            NotificationCategory.BALANCE: getattr(settings, 'ADMIN_NOTIFICATIONS_BALANCE_TOPIC_ID', None),
-            NotificationCategory.ADDONS: getattr(settings, 'ADMIN_NOTIFICATIONS_ADDONS_TOPIC_ID', None),
-            NotificationCategory.INFRASTRUCTURE: getattr(settings, 'ADMIN_NOTIFICATIONS_INFRASTRUCTURE_TOPIC_ID', None),
-            NotificationCategory.ERRORS: getattr(settings, 'ADMIN_NOTIFICATIONS_ERRORS_TOPIC_ID', None),
-            NotificationCategory.PROMO: getattr(settings, 'ADMIN_NOTIFICATIONS_PROMO_TOPIC_ID', None),
-            NotificationCategory.PARTNERS: getattr(settings, 'ADMIN_NOTIFICATIONS_PARTNERS_TOPIC_ID', None),
-            NotificationCategory.TICKETS: self.ticket_topic_id,
-            NotificationCategory.ROUTERS: getattr(settings, 'ADMIN_NOTIFICATIONS_ROUTERS_TOPIC_ID', None),
-        }
+    @property
+    def chat_id(self):
+        return getattr(settings, 'ADMIN_NOTIFICATIONS_CHAT_ID', None)
 
-        # Per-category enabled flags (default True — backwards compatible)
-        self.category_enabled: dict[NotificationCategory, bool] = {}
-        for cat in NotificationCategory:
-            key = f'ADMIN_NOTIFICATIONS_{cat.value.upper()}_ENABLED'
-            self.category_enabled[cat] = getattr(settings, key, True)
+    @property
+    def topic_id(self) -> int | None:
+        return _coerce_topic_id(getattr(settings, 'ADMIN_NOTIFICATIONS_TOPIC_ID', None))
+
+    @property
+    def ticket_topic_id(self) -> int | None:
+        return _coerce_topic_id(getattr(settings, 'ADMIN_NOTIFICATIONS_TICKET_TOPIC_ID', None))
+
+    @property
+    def enabled(self) -> bool:
+        return bool(getattr(settings, 'ADMIN_NOTIFICATIONS_ENABLED', False))
+
+    def _category_enabled(self, category: NotificationCategory) -> bool:
+        key = f'ADMIN_NOTIFICATIONS_{category.value.upper()}_ENABLED'
+        return bool(getattr(settings, key, True))
 
     async def _get_referrer_info(self, db: AsyncSession, referred_by_id: int | None) -> str:
         if not referred_by_id:
@@ -1277,9 +1299,11 @@ class AdminNotificationService:
         Иначе — fallback на self.topic_id (общий топик).
         """
         if category:
-            topic = self.category_topics.get(category)
-            if topic is not None:
-                return topic
+            key = _CATEGORY_TOPIC_KEYS.get(category)
+            if key:
+                topic = _coerce_topic_id(getattr(settings, key, None))
+                if topic is not None:
+                    return topic
         return self.topic_id
 
     async def _send_message(
@@ -1294,7 +1318,7 @@ class AdminNotificationService:
             return False
 
         # Per-category suppression
-        if category and not self.category_enabled.get(category, True):
+        if category and not self._category_enabled(category):
             logger.debug('Уведомление подавлено (категория отключена)', category=category.value)
             return False
 

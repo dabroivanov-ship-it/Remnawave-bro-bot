@@ -60,11 +60,19 @@ class StartupNotificationService:
     def __init__(self, bot: Bot) -> None:
         self.bot = bot
         self.chat_id = getattr(settings, 'ADMIN_NOTIFICATIONS_CHAT_ID', None)
-        # Стартовые/краш-уведомления → топик инфраструктуры, fallback на общий
-        self.topic_id = getattr(settings, 'ADMIN_NOTIFICATIONS_INFRASTRUCTURE_TOPIC_ID', None) or getattr(
-            settings, 'ADMIN_NOTIFICATIONS_TOPIC_ID', None
-        )
         self.enabled = getattr(settings, 'ADMIN_NOTIFICATIONS_ENABLED', False)
+
+    @property
+    def topic_id(self) -> int | None:
+        """Infrastructure topic, read when sending so a DB overlay is not missed."""
+        from app.services.admin_notification_service import _coerce_topic_id
+
+        infrastructure_topic = _coerce_topic_id(
+            getattr(settings, 'ADMIN_NOTIFICATIONS_INFRASTRUCTURE_TOPIC_ID', None)
+        )
+        if infrastructure_topic is not None:
+            return infrastructure_topic
+        return _coerce_topic_id(getattr(settings, 'ADMIN_NOTIFICATIONS_TOPIC_ID', None))
 
     async def _get_users_count(self) -> int:
         """Получает количество активных пользователей в базе."""
