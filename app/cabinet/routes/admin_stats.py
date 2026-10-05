@@ -1,7 +1,10 @@
 """Admin routes for statistics dashboard in cabinet."""
 
+import asyncio
+import os
 import sys
 import time
+from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -147,6 +150,19 @@ class DashboardStats(BaseModel):
     tariff_stats: TariffStats | None = None
 
 
+class HostLoad(BaseModel):
+    """CPU, memory, and load of the machine running the bot."""
+
+    cpu_percent: float | None = None
+    cpu_count: int | None = None
+    memory_total_bytes: int | None = None
+    memory_used_bytes: int | None = None
+    memory_percent: float | None = None
+    load_1: float | None = None
+    load_5: float | None = None
+    load_15: float | None = None
+
+
 class SystemInfoResponse(BaseModel):
     """System information for admin dashboard."""
 
@@ -155,6 +171,83 @@ class SystemInfoResponse(BaseModel):
     uptime_seconds: int
     users_total: int
     subscriptions_active: int
+    host: HostLoad | None = None
+
+
+def _read_cpu_times() -> tuple[int, int] | None:
+    try:
+        parts = Path('/proc/stat').read_text().splitlines()[0].split()
+    except OSError:
+        return None
+    if len(parts) < 5 or parts[0] != 'cpu':
+        return None
+    nums = [int(part) for part in parts[1:]]
+    idle = nums[3] + (nums[4] if len(nums) > 4 else 0)
+    return idle, sum(nums)
+
+
+def _read_memory() -> tuple[int, int] | None:
+    try:
+        lines = Path('/proc/meminfo').read_text().splitlines()
+    except OSError:
+        return None
+    values: dict[str, int] = {}
+    for line in lines:
+        key, _, rest = line.partition(':')
+        if key in {'MemTotal', 'MemAvailable'}:
+            values[key] = int(rest.split()[0]) * 1024
+    total = values.get('MemTotal')
+    available = values.get('MemAvailable')
+    if not total or available is None:
+        return None
+    return total, max(total - available, 0)
+
+
+def _read_load() -> tuple[float, float, float] | None:
+    try:
+        parts = Path('/proc/loadavg').read_text().split()
+    except OSError:
+        return None
+    if len(parts) < 3:
+        return None
+    return float(parts[0]), float(parts[1]), float(parts[2])
+
+
+async def _read_host_load() -> HostLoad | None:
+    """Read host load from /proc. Returns None when the host does not expose it."""
+    try:
+        first = await asyncio.to_thread(_read_cpu_times)
+        memory = await asyncio.to_thread(_read_memory)
+        load = await asyncio.to_thread(_read_load)
+        cpu_percent = None
+        if first is not None:
+            await asyncio.sleep(0.2)
+            second = await asyncio.to_thread(_read_cpu_times)
+            if second is not None:
+                idle_delta = second[0] - first[0]
+                total_delta = second[1] - first[1]
+                if total_delta > 0:
+                    cpu_percent = round(max(0.0, min(100.0, 100 * (total_delta - idle_delta) / total_delta)), 1)
+        if cpu_percent is None and memory is None and load is None:
+            return None
+        memory_total = memory[0] if memory else None
+        memory_used = memory[1] if memory else None
+        memory_percent = (
+            round(100 * memory_used / memory_total, 1) if memory_total and memory_used is not None else None
+        )
+        return HostLoad(
+            cpu_percent=cpu_percent,
+            cpu_count=os.cpu_count(),
+            memory_total_bytes=memory_total,
+            memory_used_bytes=memory_used,
+            memory_percent=memory_percent,
+            load_1=load[0] if load else None,
+            load_5=load[1] if load else None,
+            load_15=load[2] if load else None,
+        )
+    except Exception as error:
+        logger.warning('Failed to read bot host load', error=error)
+        return None
 
 
 # ============ Extended Stats Schemas ============
@@ -362,6 +455,7 @@ async def get_system_info(
             uptime_seconds=int(time.time() - _start_time),
             users_total=users_total,
             subscriptions_active=subscriptions_active,
+            host=await _read_host_load(),
         )
     except Exception as e:
         logger.error('Failed to get system info', error=e)

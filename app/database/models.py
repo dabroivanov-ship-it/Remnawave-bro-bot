@@ -3963,6 +3963,33 @@ class GuidePage(Base):
     category = relationship('GuideCategory', back_populates='pages')
 
 
+class RemnawaveRequestEvent(Base):
+    """IP and time of a VPN connect or a subscription update.
+
+    These addresses were not stored before. Rows come from RemnaWave
+    subscription-request history, HWID devices, and webhooks that include an IP.
+    """
+
+    __tablename__ = 'remnawave_request_events'
+    __table_args__ = (
+        UniqueConstraint('dedupe_key', name='uq_remnawave_request_events_dedupe'),
+        Index('ix_remnawave_request_events_occurred', 'occurred_at'),
+        Index('ix_remnawave_request_events_type_occurred', 'event_type', 'occurred_at'),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    event_type = Column(String(32), nullable=False)
+    ip_address = Column(String(45), nullable=False)
+    occurred_at = Column(AwareDateTime(), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    panel_user_id = Column(Integer, nullable=True)
+    dedupe_key = Column(String(160), nullable=False)
+    created_at = Column(AwareDateTime(), server_default=func.now())
+
+    def __repr__(self) -> str:
+        return f'<RemnawaveRequestEvent id={self.id} type={self.event_type!r}>'
+
+
 class InfraPaymentStatus(StrEnum):
     PAID = 'paid'
     DUE_SOON = 'due_soon'

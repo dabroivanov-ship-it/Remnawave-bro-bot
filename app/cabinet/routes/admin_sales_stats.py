@@ -5,10 +5,12 @@ from datetime import UTC, datetime, timedelta
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import Integer as SAInteger, and_, case, cast, func, select
+from sqlalchemy import Integer as SAInteger, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from app.database.crud.transaction import REAL_PAYMENT_METHODS
+from app.config import settings
+from app.database.crud.transaction import INCOME_TRANSACTION_TYPES, REAL_PAYMENT_METHODS
 from app.database.models import (
     PaymentMethod,
     RouterOrder,
@@ -16,17 +18,33 @@ from app.database.models import (
     Subscription,
     SubscriptionConversion,
     SubscriptionStatus,
-    Tariff,
     TrafficPurchase,
     Transaction,
     TransactionType,
     User,
 )
+from app.utils.timezone import get_local_timezone
 
 from ..dependencies import get_cabinet_db, require_permission
 
 
 logger = structlog.get_logger(__name__)
+
+# Rows written before is_completed existed can be NULL. Treat that as completed.
+_COMPLETED = or_(Transaction.is_completed.is_(True), Transaction.is_completed.is_(None))
+# Addon purchases are subscription payments whose description names traffic or devices.
+_ADDON_DESCRIPTION = or_(
+    Transaction.description.ilike('%трафик%'),
+    Transaction.description.ilike('%traffic%'),
+    Transaction.description.ilike('%устройств%'),
+    Transaction.description.ilike('%device%'),
+)
+# Renewals keep the same subscription row, so count the payment description.
+_RENEWAL_DESCRIPTION = or_(
+    Transaction.description.ilike('%продлен%'),
+    Transaction.description.ilike('%возобнов%'),
+    Transaction.description.ilike('%renew%'),
+)
 
 router = APIRouter(prefix='/admin/stats/sales', tags=['Cabinet Admin Sales Stats'])
 
@@ -141,7 +159,7 @@ async def get_sales_summary(
             select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(
                 and_(
                     Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
-                    Transaction.is_completed == True,
+                    _COMPLETED,
                     Transaction.payment_method.in_(REAL_PAYMENT_METHODS),
                     Transaction.created_at >= period_start,
                     Transaction.created_at <= period_end,
@@ -243,38 +261,28 @@ async def get_sales_summary(
             min(round((conversions / total_trial_starters * 100), 1), 100.0) if total_trial_starters > 0 else 0.0
         )
 
-        # Renewals count
-        renewals_subquery = (
-            select(Transaction.user_id)
-            .where(
-                and_(
-                    Transaction.type == TransactionType.SUBSCRIPTION_PAYMENT.value,
-                    Transaction.is_completed == True,
-                    Transaction.created_at < period_start,
-                )
-            )
-            .distinct()
-        )
+        # Renewals are labeled in the payment description. A prior payment is not
+        # required: the first paid extension of a trial is also a renewal.
         renewals_result = await db.execute(
             select(func.count(Transaction.id)).where(
                 and_(
                     Transaction.type == TransactionType.SUBSCRIPTION_PAYMENT.value,
-                    Transaction.is_completed == True,
+                    _COMPLETED,
                     Transaction.created_at >= period_start,
                     Transaction.created_at <= period_end,
-                    Transaction.user_id.in_(renewals_subquery),
+                    _RENEWAL_DESCRIPTION,
                 )
             )
         )
         renewals_count = renewals_result.scalar() or 0
 
-        # Add-on revenue
+        # Add-on revenue: traffic and extra devices, in Russian or English.
         addon_revenue_result = await db.execute(
             select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(
                 and_(
                     Transaction.type == TransactionType.SUBSCRIPTION_PAYMENT.value,
-                    Transaction.is_completed == True,
-                    Transaction.description.ilike('%трафик%'),
+                    _COMPLETED,
+                    _ADDON_DESCRIPTION,
                     Transaction.created_at >= period_start,
                     Transaction.created_at <= period_end,
                 )
@@ -296,7 +304,7 @@ async def get_sales_summary(
             manual_topup_kopeks=manual_topup,
             active_subscriptions=active_subs,
             active_trials=active_trials,
-            new_trials=new_trials,
+            new_trials=total_trial_starters,
             trial_to_paid_conversion=conversion_rate,
             renewals_count=renewals_count,
             addon_revenue_kopeks=addon_revenue,
@@ -492,7 +500,7 @@ async def get_trials_stats(
         ]
 
         return TrialsStatsResponse(
-            total_trials=total_trials,
+            total_trials=total_trial_starters,
             total_registrations=total_registrations,
             conversion_rate=conversion_rate,
             avg_trial_duration_days=round(avg_duration, 1),
@@ -568,19 +576,21 @@ async def get_sales_stats(
             Subscription.created_at <= period_end,
         )
 
-        totals_result = await db.execute(select(func.count(Subscription.id).label('count')).where(base_filter))
+        # Paid subscriptions usually extend the trial row, so created_at stays on
+        # the trial day. Count the payment itself, and leave add-ons to /addons.
+        sale_filter = and_(
+            Transaction.type == TransactionType.SUBSCRIPTION_PAYMENT.value,
+            _COMPLETED,
+            Transaction.created_at >= period_start,
+            Transaction.created_at <= period_end,
+            or_(Transaction.description.is_(None), ~_ADDON_DESCRIPTION),
+        )
+        totals_result = await db.execute(select(func.count(Transaction.id).label('count')).where(sale_filter))
         totals = totals_result.one()
         total_sales = totals.count
 
         revenue_result = await db.execute(
-            select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(
-                and_(
-                    Transaction.type == TransactionType.SUBSCRIPTION_PAYMENT.value,
-                    Transaction.is_completed == True,
-                    Transaction.created_at >= period_start,
-                    Transaction.created_at <= period_end,
-                )
-            )
+            select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(sale_filter)
         )
         total_revenue = revenue_result.scalar() or 0
         avg_order = total_revenue // total_sales if total_sales > 0 else 0
@@ -1086,8 +1096,11 @@ async def get_addons_stats(
             select(func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0)).where(
                 and_(
                     Transaction.type == TransactionType.SUBSCRIPTION_PAYMENT.value,
-                    Transaction.is_completed == True,
-                    Transaction.description.ilike('%трафик%'),
+                    _COMPLETED,
+                    or_(
+                        Transaction.description.ilike('%трафик%'),
+                        Transaction.description.ilike('%traffic%'),
+                    ),
                     Transaction.created_at >= period_start,
                     Transaction.created_at <= period_end,
                 )
@@ -1128,8 +1141,11 @@ async def get_addons_stats(
         # Device purchases (transactions with 'устройств' in description)
         device_filter = and_(
             Transaction.type == TransactionType.SUBSCRIPTION_PAYMENT.value,
-            Transaction.is_completed == True,
-            Transaction.description.ilike('%устройств%'),
+            _COMPLETED,
+            or_(
+                Transaction.description.ilike('%устройств%'),
+                Transaction.description.ilike('%device%'),
+            ),
             Transaction.created_at >= period_start,
             Transaction.created_at <= period_end,
         )

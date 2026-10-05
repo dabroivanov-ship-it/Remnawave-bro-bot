@@ -313,6 +313,9 @@ class RemnaWaveWebhookService:
 
         user_id = user.id
         try:
+            from app.services.request_map_service import record_request_event
+
+            await record_request_event(db, event_name=event_name, payload=data, user_id=user_id)
             await handler(db, user, subscription, data)
             return True
         except (StaleDataError, PendingRollbackError):
