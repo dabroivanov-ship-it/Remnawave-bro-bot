@@ -1317,11 +1317,17 @@ class RemnaWaveAPI:
             uuid=data['uuid'], name=data['name'], view_position=data['viewPosition'], config=data.get('config')
         )
 
-    async def get_all_hwid_devices(self) -> dict[str, Any]:
-        """GET /api/hwid/devices — all devices for all users (paginated, max 1000/page)."""
+    async def get_all_hwid_devices(self, *, max_devices: int | None = None) -> dict[str, Any]:
+        """GET /api/hwid/devices — all devices for all users (paginated, max 1000/page).
+
+        max_devices stops the walk early. The request map uses that so opening
+        the page does not download every device on a large panel.
+        """
         all_devices: list[dict[str, Any]] = []
         start = 0
         page_size = 1000
+        if max_devices is not None and max_devices > 0:
+            page_size = min(page_size, max_devices)
 
         while True:
             response = await self._make_request('GET', '/api/hwid/devices', params={'start': start, 'size': page_size})
@@ -1330,6 +1336,9 @@ class RemnaWaveAPI:
             total = data.get('total', 0)
             all_devices.extend(devices)
 
+            if max_devices is not None and len(all_devices) >= max_devices:
+                all_devices = all_devices[:max_devices]
+                break
             if len(all_devices) >= total or not devices:
                 break
             start += len(devices)

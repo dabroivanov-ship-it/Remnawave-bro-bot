@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database.models import RemnawaveRequestEvent, User
+from app.services.request_map_service import sync_request_events_from_panel
 
 from ..dependencies import get_cabinet_db, require_permission
 
@@ -252,6 +253,10 @@ async def get_request_map(
     """Points for the request map. A missing GeoLite2 file uses ipwho.is instead of failing."""
     since = datetime.now(UTC) - timedelta(days=days)
     geolite_ready = _geolite_ready()
+    try:
+        await sync_request_events_from_panel(days=days)
+    except Exception as error:
+        logger.warning('Request map panel sync failed', error=error)
     try:
         total_result = await db.execute(
             select(func.count(RemnawaveRequestEvent.id)).where(RemnawaveRequestEvent.occurred_at >= since)
