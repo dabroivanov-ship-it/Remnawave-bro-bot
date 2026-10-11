@@ -75,9 +75,9 @@ async def _send_router_order_notification(user: User, order) -> None:
 
 @router.get('', response_model=RouterShopListResponse)
 async def list_shop_routers(
-    user: User = Depends(get_current_cabinet_user),
     db: AsyncSession = Depends(get_cabinet_db),
 ) -> RouterShopListResponse:
+    """Public catalog. Same active products and tariffs as the logged-in cabinet."""
     await _ensure_routers_enabled(db)
     products = await get_all_router_products(db, include_inactive=False)
     items = [_serialize_shop_product(p) for p in products if any(t.is_active for t in p.tariffs)]

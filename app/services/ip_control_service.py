@@ -14,7 +14,7 @@ import structlog
 from app.config import settings
 from app.database.crud.user import get_user_by_remnawave_id
 from app.database.database import AsyncSessionLocal
-from app.external.remnawave_api import UserStatus
+from app.external.remnawave_api import RemnaWaveTimeoutError, UserStatus
 from app.services.admin_notification_service import AdminNotificationService
 from app.services.ip_control_utils import (
     count_sources,
@@ -469,6 +469,8 @@ class IpControlScheduler:
                     await self.service.run_scan(self.bot, notify=True)
             except asyncio.CancelledError:
                 raise
+            except RemnaWaveTimeoutError as error:
+                logger.warning('IP control scan skipped: Remnawave panel timed out', error=error)
             except Exception as error:
                 logger.error('IP control scan failed', error=error)
             await asyncio.sleep(self.service.get_interval_seconds())

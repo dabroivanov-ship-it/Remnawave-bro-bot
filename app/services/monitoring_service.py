@@ -48,6 +48,7 @@ from app.database.models import (
 )
 from app.external.remnawave_api import (
     RemnaWaveAPIError,
+    RemnaWaveTimeoutError,
     RemnaWaveUser,
     UserStatus as RemnaWaveUserStatus,
 )
@@ -2375,6 +2376,15 @@ class MonitoringService:
                     db, 'remnawave_sync', 'Синхронизация с RemnaWave завершена', {'stats': system_stats}
                 )
 
+        except RemnaWaveTimeoutError as e:
+            logger.warning('Синхронизация с RemnaWave пропущена: таймаут панели', error=e)
+            await self._log_monitoring_event(
+                db,
+                'remnawave_sync_error',
+                f'Таймаут синхронизации с RemnaWave: {e!s}',
+                {'error': str(e)},
+                is_success=False,
+            )
         except Exception as e:
             logger.error('Ошибка синхронизации с RemnaWave', error=e)
             await self._log_monitoring_event(

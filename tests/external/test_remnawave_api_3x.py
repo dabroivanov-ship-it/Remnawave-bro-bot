@@ -122,3 +122,50 @@ def test_apply_panel_identity():
     assert sub.remnawave_id == 99
     assert sub.remnawave_short_uuid == 's99'
     assert sub.remnawave_uuid is None
+
+
+def test_parse_system_stats_maps_online_users_and_traffic_bytes():
+    """3.x stats: onlineNow is users online; totalBytesLifetime is user traffic.
+
+    nodes.totalOnline is connections on nodes, and users.totalTrafficBytes is absent.
+    """
+    api = RemnaWaveAPI(base_url='https://panel.example', api_key='x')
+    parsed = api.parse_system_stats(
+        {
+            'onlineStats': {
+                'onlineNow': 4,
+                'lastDay': 10,
+                'lastWeek': 20,
+                'neverOnline': 3,
+            },
+            'users': {
+                'totalUsers': 100,
+                'statusCounts': {'ACTIVE': 80},
+            },
+            'nodes': {
+                'totalOnline': 21,
+                'totalBytesLifetime': '4096',
+            },
+            'cpu': {'cores': 2},
+            'memory': {'total': 1000, 'used': 400, 'free': 600},
+            'uptime': 50,
+        }
+    )
+    assert parsed['users_online'] == 4
+    assert parsed['users_online'] != 21
+    assert parsed['total_user_traffic'] == 4096
+    assert parsed['total_users'] == 100
+    assert parsed['users_last_day'] == 10
+    assert parsed['users_by_status'] == {'ACTIVE': 80}
+
+
+def test_count_connected_nodes_skips_offline_and_disabled():
+    api = RemnaWaveAPI(base_url='https://panel.example', api_key='x')
+    nodes = [
+        SimpleNamespace(is_connected=True, is_disabled=False),
+        SimpleNamespace(is_connected=True, is_disabled=True),
+        SimpleNamespace(is_connected=False, is_disabled=False),
+        {'isConnected': True, 'isDisabled': False},
+    ]
+    assert api.count_connected_nodes(nodes) == 2
+    assert api.count_connected_nodes(nodes) != 21

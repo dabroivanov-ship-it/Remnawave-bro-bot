@@ -31,6 +31,7 @@ from app.database.models import (
 from app.external.remnawave_api import (
     RemnaWaveAPI,
     RemnaWaveAPIError,
+    RemnaWaveTimeoutError,
     UserStatus,
     apply_panel_identity,
     resolve_panel_user,
@@ -43,6 +44,14 @@ from app.utils.timezone import get_local_timezone
 
 
 logger = structlog.get_logger(__name__)
+
+
+def _log_panel_call_failure(message: str, error: Exception) -> None:
+    """Timeouts are blips. Auth and HTTP errors still page the operator."""
+    if isinstance(error, RemnaWaveTimeoutError):
+        logger.warning(message, error=error)
+    else:
+        logger.error(message, error=error)
 
 
 def _get_user_traffic_bytes(panel_user: dict[str, Any]) -> int:
@@ -563,34 +572,42 @@ class RemnaWaveService:
                     system_stats = await api.get_system_stats()
                     logger.info('Системная статистика получена')
                 except Exception as e:
-                    logger.error('Ошибка получения системной статистики', error=e)
+                    _log_panel_call_failure('Ошибка получения системной статистики', e)
                     system_stats = {}
 
                 try:
                     bandwidth_stats = await api.get_bandwidth_stats()
                     logger.info('Статистика трафика получена')
                 except Exception as e:
-                    logger.error('Ошибка получения статистики трафика', error=e)
+                    _log_panel_call_failure('Ошибка получения статистики трафика', e)
                     bandwidth_stats = {}
 
                 try:
                     realtime_usage = await api.get_nodes_realtime_usage()
                     logger.info('Реалтайм статистика получена')
                 except Exception as e:
-                    logger.error('Ошибка получения реалтайм статистики', error=e)
+                    _log_panel_call_failure('Ошибка получения реалтайм статистики', e)
                     realtime_usage = []
 
                 try:
                     nodes_stats = await api.get_nodes_statistics()
                 except Exception as e:
-                    logger.error('Ошибка получения статистики нод', error=e)
+                    _log_panel_call_failure('Ошибка получения статистики нод', e)
                     nodes_stats = {}
 
                 total_download = sum(node.get('downloadBytes', 0) for node in realtime_usage)
                 total_upload = sum(node.get('uploadBytes', 0) for node in realtime_usage)
                 total_realtime_traffic = total_download + total_upload
 
-                total_user_traffic = int(system_stats.get('users', {}).get('totalTrafficBytes', '0'))
+                parsed_stats = api.parse_system_stats(system_stats)
+                try:
+                    panel_nodes = await api.get_all_nodes()
+                    nodes_online = api.count_connected_nodes(panel_nodes)
+                except Exception as e:
+                    _log_panel_call_failure('Ошибка получения списка нод для обзора', e)
+                    nodes_online = 0
+
+                total_user_traffic = parsed_stats['total_user_traffic']
 
                 nodes_weekly_data = []
                 if nodes_stats.get('lastSevenDays'):
@@ -608,7 +625,7 @@ class RemnaWaveService:
                     nodes_weekly_data.sort(key=lambda x: x['total_bytes'], reverse=True)
 
                 uptime_seconds = 0
-                uptime_value = system_stats.get('uptime')
+                uptime_value = parsed_stats['uptime']
                 try:
                     uptime_seconds = int(float(uptime_value)) if uptime_value is not None else 0
                 except (TypeError, ValueError):
@@ -616,21 +633,21 @@ class RemnaWaveService:
 
                 result = {
                     'system': {
-                        'users_online': system_stats.get('onlineStats', {}).get('onlineNow', 0),
-                        'total_users': system_stats.get('users', {}).get('totalUsers', 0),
-                        'active_connections': system_stats.get('onlineStats', {}).get('onlineNow', 0),
-                        'nodes_online': system_stats.get('nodes', {}).get('totalOnline', 0),
-                        'users_last_day': system_stats.get('onlineStats', {}).get('lastDay', 0),
-                        'users_last_week': system_stats.get('onlineStats', {}).get('lastWeek', 0),
-                        'users_never_online': system_stats.get('onlineStats', {}).get('neverOnline', 0),
+                        'users_online': parsed_stats['users_online'],
+                        'total_users': parsed_stats['total_users'],
+                        'active_connections': parsed_stats['users_online'],
+                        'nodes_online': nodes_online,
+                        'users_last_day': parsed_stats['users_last_day'],
+                        'users_last_week': parsed_stats['users_last_week'],
+                        'users_never_online': parsed_stats['users_never_online'],
                         'total_user_traffic': total_user_traffic,
                     },
-                    'users_by_status': system_stats.get('users', {}).get('statusCounts', {}),
+                    'users_by_status': parsed_stats['users_by_status'],
                     'server_info': {
-                        'cpu_cores': system_stats.get('cpu', {}).get('cores', 0),
-                        'memory_total': system_stats.get('memory', {}).get('total', 0),
-                        'memory_used': system_stats.get('memory', {}).get('used', 0),
-                        'memory_free': system_stats.get('memory', {}).get('free', 0),
+                        'cpu_cores': parsed_stats['cpu_cores'],
+                        'memory_total': parsed_stats['memory_total'],
+                        'memory_used': parsed_stats['memory_used'],
+                        'memory_free': parsed_stats['memory_free'],
                         'uptime_seconds': uptime_seconds,
                     },
                     'bandwidth': {
@@ -697,6 +714,9 @@ class RemnaWaveService:
                 )
                 return result
 
+        except RemnaWaveTimeoutError as e:
+            logger.warning('Системная статистика пропущена: таймаут панели', error=e)
+            return {'error': str(e)}
         except RemnaWaveAPIError as e:
             logger.error('Ошибка Remnawave API при получении статистики', error=e)
             return {'error': str(e)}
@@ -789,6 +809,9 @@ class RemnaWaveService:
                 logger.info('✅ Соединение с Remnawave API работает')
                 return True
 
+        except RemnaWaveTimeoutError as e:
+            logger.warning('Таймаут соединения с Remnawave API', error=e)
+            return False
         except Exception as e:
             logger.error('❌ Ошибка соединения с Remnawave API', error=e)
             return False
@@ -3371,6 +3394,9 @@ class RemnaWaveService:
 
             return status_result
 
+        except RemnaWaveTimeoutError as e:
+            logger.warning('Мониторинг статуса панели пропущен: таймаут Remnawave', error=e)
+            return {'status': 'offline', 'error': str(e)}
         except Exception as e:
             logger.error('Ошибка мониторинга статуса панели Remnawave', error=e)
             return {'status': 'error', 'error': str(e)}
@@ -3567,7 +3593,10 @@ class RemnaWaveService:
                     await asyncio.sleep(1)
                     continue
 
-                logger.error('Ошибка проверки здоровья панели', error=error)
+                if isinstance(error, RemnaWaveTimeoutError):
+                    logger.warning('Проверка здоровья панели пропущена: таймаут', error=error)
+                else:
+                    logger.error('Ошибка проверки здоровья панели', error=error)
 
         if last_result is not None:
             return last_result

@@ -241,6 +241,17 @@ class RemnaWaveAPIError(Exception):
         super().__init__(self.message)
 
 
+class RemnaWaveTimeoutError(RemnaWaveAPIError):
+    """Connect or request timeout after the client retries.
+
+    HTTP 4xx/5xx stay RemnaWaveAPIError so callers still surface them.
+    """
+
+
+def _is_transient_timeout(exc: BaseException) -> bool:
+    return isinstance(exc, (aiohttp.ServerTimeoutError, TimeoutError))
+
+
 class RemnaWaveAPI:
     def __init__(
         self,
@@ -424,7 +435,7 @@ class RemnaWaveAPI:
 
                     return response_data
 
-            except aiohttp.ClientError as e:
+            except (aiohttp.ClientError, TimeoutError) as e:
                 if attempt < max_retries:
                     delay = base_delay * (2**attempt)
                     logger.warning(
@@ -438,8 +449,16 @@ class RemnaWaveAPI:
                     )
                     await asyncio.sleep(delay)
                     continue
+                if _is_transient_timeout(e):
+                    logger.warning(
+                        'Remnawave panel timed out',
+                        method=method,
+                        endpoint=endpoint,
+                        error=e,
+                    )
+                    raise RemnaWaveTimeoutError(f'Request failed: {e!s}') from e
                 logger.error('Request failed', error=e)
-                raise RemnaWaveAPIError(f'Request failed: {e!s}')
+                raise RemnaWaveAPIError(f'Request failed: {e!s}') from e
 
         raise RemnaWaveAPIError(f'Max retries exceeded for {method} {endpoint}')
 
@@ -1111,6 +1130,50 @@ class RemnaWaveAPI:
         }
 
         return links
+
+    def parse_system_stats(self, payload: dict[str, Any] | None) -> dict[str, Any]:
+        """Map a RemnaWave 3.x `/api/system/stats` body onto overview fields.
+
+        `onlineStats.onlineNow` is unique users online now.
+        `nodes.totalOnline` is connections on nodes, not how many nodes are up.
+        User traffic bytes are `nodes.totalBytesLifetime`. `users.totalTrafficBytes` is not in this payload.
+        """
+        data = payload or {}
+        online = data.get('onlineStats') or {}
+        users = data.get('users') or {}
+        nodes = data.get('nodes') or {}
+        cpu = data.get('cpu') or {}
+        memory = data.get('memory') or {}
+        status_counts = users.get('statusCounts') or {}
+        return {
+            'users_online': self._safe_int(online.get('onlineNow')),
+            'total_users': self._safe_int(users.get('totalUsers')),
+            'users_last_day': self._safe_int(online.get('lastDay')),
+            'users_last_week': self._safe_int(online.get('lastWeek')),
+            'users_never_online': self._safe_int(online.get('neverOnline')),
+            'total_user_traffic': self._safe_int(nodes.get('totalBytesLifetime')),
+            'users_by_status': status_counts if isinstance(status_counts, dict) else {},
+            'cpu_cores': self._safe_int(cpu.get('cores')),
+            'memory_total': self._safe_int(memory.get('total')),
+            'memory_used': self._safe_int(memory.get('used')),
+            'memory_free': self._safe_int(memory.get('free')),
+            'uptime': data.get('uptime'),
+        }
+
+    @staticmethod
+    def count_connected_nodes(nodes: list[Any]) -> int:
+        """Nodes that are connected and not disabled."""
+        online = 0
+        for node in nodes:
+            if isinstance(node, dict):
+                connected = bool(node.get('is_connected', node.get('isConnected', False)))
+                disabled = bool(node.get('is_disabled', node.get('isDisabled', False)))
+            else:
+                connected = bool(getattr(node, 'is_connected', False))
+                disabled = bool(getattr(node, 'is_disabled', False))
+            if connected and not disabled:
+                online += 1
+        return online
 
     async def get_system_stats(self) -> dict[str, Any]:
         response = await self._make_request('GET', '/api/system/stats')
