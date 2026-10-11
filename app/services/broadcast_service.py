@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import structlog
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardMarkup
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import InterfaceError, SQLAlchemyError
 
+from app.config import settings
 from app.database.database import AsyncSessionLocal
 from app.database.models import BroadcastHistory, Subscription, SubscriptionStatus, User, UserStatus
 from app.handlers.admin.messages import (
@@ -73,6 +74,21 @@ class EmailBroadcastConfig:
     email_subject: str
     email_html_content: str
     initiator_name: str | None = None
+
+
+def recent_email_activity_conditions() -> list:
+    """Пользователи с почтой, которые заходили за окно автоудаления неактивных.
+
+    Тот же срок, что INACTIVE_USER_DELETE_MONTHS (на проде 3 месяца = 90 дней).
+    Подтверждение почты не требуется: в рассылку берётся сам адрес.
+    """
+    threshold = datetime.now(UTC) - timedelta(days=settings.INACTIVE_USER_DELETE_MONTHS * 30)
+    return [
+        User.email.isnot(None),
+        func.length(func.btrim(User.email)) > 0,
+        User.status == UserStatus.ACTIVE.value,
+        User.last_activity >= threshold,
+    ]
 
 
 @dataclass(slots=True)
@@ -761,7 +777,10 @@ class EmailBroadcastService:
                 User.status == 'active',
             ]
 
-            if target == 'all_email':
+            if target == 'recent_email':
+                query = select(User).where(*recent_email_activity_conditions())
+
+            elif target == 'all_email':
                 query = select(User).where(*base_conditions)
 
             elif target == 'email_only':

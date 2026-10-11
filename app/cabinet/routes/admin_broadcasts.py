@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database.models import BroadcastHistory, Subscription, SubscriptionStatus, Tariff, User
 from app.handlers.admin.messages import get_target_users_count
 from app.keyboards.admin import BROADCAST_BUTTONS, DEFAULT_BROADCAST_BUTTONS
@@ -16,6 +17,7 @@ from app.services.broadcast_service import (
     EmailBroadcastConfig,
     broadcast_service,
     email_broadcast_service,
+    recent_email_activity_conditions,
 )
 
 from ..dependencies import get_cabinet_db, require_permission
@@ -97,6 +99,7 @@ CUSTOM_FILTER_GROUPS = {
 # ============ Email Filter Labels ============
 
 EMAIL_FILTER_LABELS = {
+    'recent_email': 'Все с почтой, активные 3 месяца',
     'all_email': 'Все с email',
     'email_only': 'Только email-регистрация',
     'telegram_with_email': 'Telegram с email',
@@ -105,6 +108,7 @@ EMAIL_FILTER_LABELS = {
 }
 
 EMAIL_FILTER_GROUPS = {
+    'recent_email': 'activity',
     'all_email': 'basic',
     'email_only': 'auth_type',
     'telegram_with_email': 'auth_type',
@@ -156,7 +160,10 @@ async def _get_email_filter_count(db: AsyncSession, target: str) -> int:
         User.status == 'active',
     ]
 
-    if target == 'all_email':
+    if target == 'recent_email':
+        query = select(func.count(User.id)).where(*recent_email_activity_conditions())
+
+    elif target == 'all_email':
         query = select(func.count(User.id)).where(*base_conditions)
 
     elif target == 'email_only':
@@ -506,6 +513,8 @@ async def get_email_filters(
     total_with_email = 0
 
     for key, label in EMAIL_FILTER_LABELS.items():
+        if key == 'recent_email':
+            label = f'Все с почтой, активные {settings.INACTIVE_USER_DELETE_MONTHS} мес.'
         try:
             count = await _get_email_filter_count(db, key)
         except Exception as e:
